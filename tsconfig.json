@@ -18,7 +18,8 @@
       "@config/*": ["config/*"],
       "@services/*": ["services/*"],
       "@types/*": ["types/*"], // ✅ FIXED: "*.types" → "types/*"
-      "@swagger/*": ["swagger/*"]
+      "@swagger/*": ["swagger/*"],
+      "@validations/*": ["validations/*"]
     }
   },
   "include": ["src"]

@@ -1,13 +1,15 @@
 import mongoose from 'mongoose';
+import { Role } from '../constants';
 
-export type UserRole = 'admin' | 'supervisor' | 'operator';
-export interface IUser extends Document {
-  _id: mongoose.Types.ObjectId; // explicitly defined to fix TS error
+export interface IUser {
+  _id: mongoose.Types.ObjectId;
   username: string;
   password: string;
   name: string;
   empId: string;
-  role: UserRole;
+  role: Role;
   isActive: boolean;
   plantId?: mongoose.Types.ObjectId; // for supervisors
+  createdAt: Date;
+  updatedAt: Date;
 }

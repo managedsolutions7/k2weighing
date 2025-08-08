@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "swagger": "ts-node src/swagger.ts",
+    "swagger": "ts-node src/config/swaggerConfig.ts",
     "dev": "npm run swagger && ts-node-dev --respawn --transpile-only --require tsconfig-paths/register src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
@@ -25,12 +25,14 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@types/pdfkit": "^0.17.2",
     "bcryptjs": "^3.0.2",
     "D": "^1.0.0",
     "dotenv": "^17.2.1",
     "express": "^5.1.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.17.0",
+    "pdfkit": "^0.17.1",
     "redis": "^5.7.0",
     "swagger-autogen": "^2.23.7",
     "swagger-ui-express": "^5.0.1",
