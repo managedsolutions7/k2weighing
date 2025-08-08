@@ -7,12 +7,19 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "resolveJsonModule": true, // for importing generated swagger docs
+    "resolveJsonModule": true,
     "baseUrl": "./src",
     "paths": {
       "@controllers/*": ["controllers/*"],
-      "@routes/*": ["routes/*"]
+      "@routes/*": ["routes/*"],
+      "@utils/*": ["utils/*"],
+      "@middlewares/*": ["middlewares/*"],
+      "@models/*": ["models/*"],
+      "@config/*": ["config/*"],
+      "@services/*": ["services/*"],
+      "@types/*": ["types/*"], // ✅ FIXED: "*.types" → "types/*"
+      "@swagger/*": ["swagger/*"]
     }
   },
-  "include": ["src", "src/swagger.ts"]
+  "include": ["src"]
 }
