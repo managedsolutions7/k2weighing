@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { ValidationMessages } from '../constants';
 
 export const createEntrySchema = z.object({
   body: z.object({

@@ -2,7 +2,7 @@ import { Request } from 'express';
 import User from '../models/user.model';
 import { LoginRequest, RegisterRequest, ChangePasswordRequest } from '../types/auth.types';
 import { comparePasswords, hashPassword, validatePasswordStrength } from './hash.service';
-import { signAccessToken, signRefreshToken, verifyAccessToken } from './token.service';
+import { signAccessToken, signRefreshToken } from './token.service';
 import CustomError from '../utils/customError';
 import logger from '../utils/logger';
 interface AuthRequest extends Request {

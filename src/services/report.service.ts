@@ -1,15 +1,12 @@
 import { Request } from 'express';
 import Entry from '../models/entry.model';
 import {
-  ReportFilters,
   SummaryReport,
   DetailedReport,
   VendorReport,
   PlantReport,
   TimeSeriesReport,
-  ExportOptions,
 } from '../types/report.types';
-import CustomError from '../utils/customError';
 import logger from '../utils/logger';
 import { PaginationDefaults } from '../constants';
 
