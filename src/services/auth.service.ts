@@ -1,12 +1,17 @@
 import { Request } from 'express';
 import User from '../models/user.model';
-import { IUser } from '../types/user.types';
 import { LoginRequest, RegisterRequest, ChangePasswordRequest } from '../types/auth.types';
 import { comparePasswords, hashPassword, validatePasswordStrength } from './hash.service';
 import { signAccessToken, signRefreshToken, verifyAccessToken } from './token.service';
 import CustomError from '../utils/customError';
 import logger from '../utils/logger';
-
+interface AuthRequest extends Request {
+  user?: {
+    id: string;
+    role: string;
+  };
+  refreshToken?: string; // Add this line
+}
 export class AuthService {
   /**
    * Authenticate user and generate tokens
@@ -181,33 +186,12 @@ export class AuthService {
   /**
    * Refresh access token
    */
-  static async refreshToken(req: Request): Promise<{ token: string }> {
-    try {
-      const { refreshToken } = req.body;
-
-      if (!refreshToken) {
-        throw new CustomError('Refresh token is required', 400);
-      }
-
-      // Verify refresh token
-      const decoded = verifyAccessToken(refreshToken);
-
-      // Get user
-      const user = await User.findById(decoded.id);
-      if (!user || !user.isActive) {
-        throw new CustomError('User not found or inactive', 401);
-      }
-
-      // Generate new access token
-      const token = signAccessToken(user._id.toString(), user.role);
-
-      logger.info(`Token refreshed for user: ${user.username}`);
-
-      return { token };
-    } catch (error) {
-      logger.error('Auth service - refreshToken error:', error);
-      throw error;
-    }
+  static async refreshToken(req: AuthRequest): Promise<{ token: string; refreshToken: string }> {
+    const { id, role } = req.user!;
+    const token = signAccessToken(id, role);
+    const refreshToken = signRefreshToken(id);
+    logger.info(`Token refreshed for user: ${id}`);
+    return { token, refreshToken };
   }
 
   /**

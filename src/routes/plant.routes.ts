@@ -81,7 +81,7 @@ router.post('/', validate(createPlantSchema), allowRoles('admin'), PlantControll
  *       401:
  *         description: Unauthorized
  */
-router.get('/', PlantController.getPlants);
+router.get('/', allowRoles('admin'), PlantController.getPlants);
 
 /**
  * @swagger

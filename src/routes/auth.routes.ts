@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { AuthController } from '../controllers/auth.controller';
 import { validate } from '../middlewares/validator';
 import { loginSchema, registerSchema, changePasswordSchema } from '../validations/auth.schema';
-import { verifyToken } from '../middlewares/auth';
+import { verifyRefreshToken, verifyToken } from '../middlewares/auth';
 import { allowRoles } from '../middlewares/roleGuard';
 
 const router = Router();
@@ -125,12 +125,13 @@ router.post(
  *       401:
  *         description: Unauthorized
  */
-// router.post(
-//   '/change-password',
-//   verifyToken,
-//   validate(changePasswordSchema),
-//   AuthController.changePassword,
-// );
+router.post(
+  '/change-password',
+  verifyToken,
+  allowRoles('admin'),
+  validate(changePasswordSchema),
+  AuthController.changePassword,
+);
 
 /**
  * @swagger
@@ -157,7 +158,7 @@ router.post(
  *       401:
  *         description: Unauthorized
  */
-router.post('/refresh', AuthController.refreshToken);
+router.post('/refresh', verifyRefreshToken, AuthController.refreshToken);
 
 /**
  * @swagger
