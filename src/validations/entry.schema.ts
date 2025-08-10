@@ -7,6 +7,10 @@ export const createEntrySchema = z.object({
     vehicle: z.string().min(1, 'Vehicle ID is required'),
     plant: z.string().min(1, 'Plant ID is required'),
     quantity: z.number().positive('Quantity must be positive').max(1000000, 'Quantity too high'),
+    entryWeight: z
+      .number()
+      .positive('Entry weight must be positive')
+      .max(1000000, 'Entry weight too high'),
     rate: z.number().positive('Rate must be positive').max(100000, 'Rate too high'),
     entryDate: z
       .string()
@@ -45,6 +49,18 @@ export const getEntrySchema = z.object({
 export const deleteEntrySchema = z.object({
   params: z.object({
     id: z.string().min(1, 'Entry ID is required'),
+  }),
+});
+
+export const updateExitWeightSchema = z.object({
+  params: z.object({
+    id: z.string().min(1, 'Entry ID is required'),
+  }),
+  body: z.object({
+    exitWeight: z
+      .number()
+      .positive('Exit weight must be positive')
+      .max(1000000, 'Exit weight too high'),
   }),
 });
 

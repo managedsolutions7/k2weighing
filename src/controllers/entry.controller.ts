@@ -173,6 +173,9 @@ export class EntryController {
    *     responses:
    *       200:
    *         description: Entries retrieved successfully
+   *         x-cache:
+   *           cached: true
+   *           ttlSeconds: 300
    *         content:
    *           application/json:
    *             schema:
@@ -287,6 +290,9 @@ export class EntryController {
    *     responses:
    *       200:
    *         description: Entry retrieved successfully
+   *         x-cache:
+   *           cached: true
+   *           ttlSeconds: 300
    *         content:
    *           application/json:
    *             schema:
@@ -489,6 +495,46 @@ export class EntryController {
       });
     } catch (error) {
       logger.error('Entry controller - deleteEntry error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * @swagger
+   * /api/entries/{id}/exit:
+   *   patch:
+   *     summary: Update exit weight and finalize entry
+   *     description: Sets exit weight, computes expected and exact weights, flags variance, and updates invoices.
+   *     tags: [Entries]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Entry ID
+   *     requestBody:
+   *       required: true
+   *       content:
+   *         application/json:
+   *           schema:
+   *             type: object
+   *             properties:
+   *               exitWeight:
+   *                 type: number
+   *                 description: Measured exit weight
+   *     responses:
+   *       200:
+   *         description: Exit weight updated and totals recalculated
+   */
+  static async updateExitWeight(req: Request, res: Response): Promise<void> {
+    try {
+      const entry = await EntryService.updateExitWeight(req);
+      res.status(200).json({ success: true, data: entry, message: 'Exit weight updated' });
+    } catch (error) {
+      logger.error('Entry controller - updateExitWeight error:', error);
       throw error;
     }
   }

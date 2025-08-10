@@ -7,6 +7,7 @@ import {
   getEntrySchema,
   deleteEntrySchema,
   getEntriesSchema,
+  updateExitWeightSchema,
 } from '../validations/entry.schema';
 import { verifyToken } from '../middlewares/auth';
 import { allowRoles } from '../middlewares/roleGuard';
@@ -293,5 +294,25 @@ router.put('/:id', validate(updateEntrySchema), EntryController.updateEntry);
  *         description: Entry not found
  */
 router.delete('/:id', validate(deleteEntrySchema), EntryController.deleteEntry);
+
+/**
+ * @swagger
+ * /api/entries/{id}/exit:
+ *   patch:
+ *     summary: Update exit weight and compute variance
+ *     tags: [Entries]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Exit weight updated
+ */
+router.patch('/:id/exit', validate(updateExitWeightSchema), EntryController.updateExitWeight);
 
 export default router;

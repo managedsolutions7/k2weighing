@@ -3,6 +3,19 @@ import Vehicle from '../models/vehicle.model';
 import { IVehicle, CreateVehicleRequest, UpdateVehicleRequest } from '../types/vehicle.types';
 import CustomError from '../utils/customError';
 import logger from '../utils/logger';
+import { CacheService } from './cache.service';
+import {
+  getVehiclesCacheKey,
+  VEHICLE_BY_ID_KEY,
+  VEHICLES_CACHE_TTL,
+  VEHICLE_BY_ID_CACHE_TTL,
+  VEHICLES_ALL_CACHE_KEY,
+  VEHICLES_ACTIVE_CACHE_KEY,
+  VEHICLES_INACTIVE_CACHE_KEY,
+  VEHICLES_BY_TYPE_ALL_KEY,
+  VEHICLES_BY_TYPE_ACTIVE_KEY,
+  VEHICLES_BY_TYPE_INACTIVE_KEY,
+} from '@constants/cache.constants';
 
 export class VehicleService {
   /**
@@ -22,6 +35,10 @@ export class VehicleService {
       const savedVehicle = await vehicle.save();
 
       logger.info(`Vehicle created: ${savedVehicle._id}`);
+      await VehicleService.invalidateCache(
+        savedVehicle._id.toString(),
+        req.query?.vehicleType as string | undefined,
+      );
       return savedVehicle;
     } catch (error) {
       logger.error('Error creating vehicle:', error);
@@ -34,18 +51,23 @@ export class VehicleService {
    */
   static async getVehicles(req: Request): Promise<IVehicle[]> {
     try {
-      const { isActive, vehicleType } = req.query;
-      const filter: any = {};
-
-      if (isActive !== undefined) {
-        filter.isActive = isActive === 'true';
-      }
-
-      if (vehicleType) {
-        filter.vehicleType = vehicleType;
-      }
-
-      const vehicles = await Vehicle.find(filter).sort({ createdAt: -1 });
+      const cacheKey = getVehiclesCacheKey(req.query);
+      const vehicles = await CacheService.getOrSet<IVehicle[]>(
+        cacheKey,
+        VEHICLES_CACHE_TTL,
+        async () => {
+          const { isActive, vehicleType } = req.query as any;
+          const filter: any = {};
+          if (isActive !== undefined) {
+            filter.isActive = isActive === 'true';
+          }
+          if (vehicleType) {
+            filter.vehicleType = vehicleType;
+          }
+          const data = await Vehicle.find(filter).sort({ createdAt: -1 });
+          return data;
+        },
+      );
       logger.info(`Retrieved ${vehicles.length} vehicles`);
       return vehicles;
     } catch (error) {
@@ -60,12 +82,18 @@ export class VehicleService {
   static async getVehicleById(req: Request): Promise<IVehicle> {
     try {
       const { id } = req.params;
-      const vehicle = await Vehicle.findById(id);
-
+      const cacheKey = VEHICLE_BY_ID_KEY(id);
+      const vehicle = await CacheService.getOrSet<IVehicle | null>(
+        cacheKey,
+        VEHICLE_BY_ID_CACHE_TTL,
+        async () => {
+          const data = await Vehicle.findById(id);
+          return data as unknown as IVehicle | null;
+        },
+      );
       if (!vehicle) {
         throw new CustomError('Vehicle not found', 404);
       }
-
       logger.info(`Vehicle retrieved: ${id}`);
       return vehicle;
     } catch (error) {
@@ -103,6 +131,7 @@ export class VehicleService {
       }
 
       logger.info(`Vehicle updated: ${id}`);
+      await VehicleService.invalidateCache(id, undefined);
       return vehicle;
     } catch (error) {
       logger.error('Error updating vehicle:', error);
@@ -123,10 +152,43 @@ export class VehicleService {
       }
 
       logger.info(`Vehicle deleted: ${id}`);
+      await VehicleService.invalidateCache(id, undefined);
       return { message: 'Vehicle deleted successfully' };
     } catch (error) {
       logger.error('Error deleting vehicle:', error);
       throw error;
+    }
+  }
+
+  static async invalidateCache(id?: string, vehicleType?: string) {
+    // Invalidate list caches
+    await CacheService.del(VEHICLES_ALL_CACHE_KEY);
+    await CacheService.del(VEHICLES_ACTIVE_CACHE_KEY);
+    await CacheService.del(VEHICLES_INACTIVE_CACHE_KEY);
+    if (vehicleType) {
+      await CacheService.del(VEHICLES_BY_TYPE_ALL_KEY(vehicleType));
+      await CacheService.del(VEHICLES_BY_TYPE_ACTIVE_KEY(vehicleType));
+      await CacheService.del(VEHICLES_BY_TYPE_INACTIVE_KEY(vehicleType));
+    }
+    // Invalidate item cache
+    if (id) {
+      await CacheService.del(VEHICLE_BY_ID_KEY(id));
+    }
+  }
+
+  // Example bulk delete/update invalidation (if/when bulk ops exist)
+  static async invalidateBulk(vehicleIds: string[], vehicleType?: string) {
+    await CacheService.invalidateListAndItems(
+      VEHICLES_ALL_CACHE_KEY,
+      VEHICLE_BY_ID_KEY,
+      vehicleIds,
+    );
+    await CacheService.del(VEHICLES_ACTIVE_CACHE_KEY);
+    await CacheService.del(VEHICLES_INACTIVE_CACHE_KEY);
+    if (vehicleType) {
+      await CacheService.del(VEHICLES_BY_TYPE_ALL_KEY(vehicleType));
+      await CacheService.del(VEHICLES_BY_TYPE_ACTIVE_KEY(vehicleType));
+      await CacheService.del(VEHICLES_BY_TYPE_INACTIVE_KEY(vehicleType));
     }
   }
 }

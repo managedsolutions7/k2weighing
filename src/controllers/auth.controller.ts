@@ -3,10 +3,6 @@ import { Request, Response } from 'express';
 import { AuthService } from '@services/auth.service';
 import logger from '@utils/logger';
 import {
-  LoginRequest,
-  RegisterRequest,
-  ChangePasswordRequest,
-  RefreshTokenRequest,
   LoginResponse,
   RegisterResponse,
   ChangePasswordResponse,
@@ -87,10 +83,7 @@ export class AuthController {
    *       500:
    *         description: Internal server error
    */
-  static async login(
-    req: Request<unknown, LoginResponse | ErrorResponse, LoginRequest>,
-    res: Response<LoginResponse | ErrorResponse>,
-  ): Promise<void> {
+  static async login(req: Request, res: Response<LoginResponse | ErrorResponse>): Promise<void> {
     try {
       const result = await AuthService.login(req);
 
@@ -179,7 +172,7 @@ export class AuthController {
    *         description: Internal server error
    */
   static async register(
-    req: Request<unknown, RegisterResponse | ErrorResponse, RegisterRequest>,
+    req: Request,
     res: Response<RegisterResponse | ErrorResponse>,
   ): Promise<void> {
     try {
@@ -245,7 +238,7 @@ export class AuthController {
    *         description: Internal server error
    */
   static async changePassword(
-    req: Request<unknown, ChangePasswordResponse | ErrorResponse, ChangePasswordRequest>,
+    req: Request,
     res: Response<ChangePasswordResponse | ErrorResponse>,
   ): Promise<void> {
     try {
@@ -309,7 +302,7 @@ export class AuthController {
    *         description: Internal server error
    */
   static async refreshToken(
-    req: Request<unknown, RefreshTokenResponse | ErrorResponse, RefreshTokenRequest>,
+    req: Request,
     res: Response<RefreshTokenResponse | ErrorResponse>,
   ): Promise<void> {
     try {
@@ -338,6 +331,9 @@ export class AuthController {
    *     responses:
    *       200:
    *         description: Profile retrieved successfully
+   *         x-cache:
+   *           cached: true
+   *           ttlSeconds: 1800
    *         content:
    *           application/json:
    *             schema:
@@ -383,7 +379,7 @@ export class AuthController {
    *         description: Internal server error
    */
   static async getProfile(
-    req: Request<unknown, ProfileResponse | ErrorResponse>,
+    req: Request,
     res: Response<ProfileResponse | ErrorResponse>,
   ): Promise<void> {
     try {

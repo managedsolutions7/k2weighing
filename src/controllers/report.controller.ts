@@ -49,6 +49,9 @@ export class ReportController {
    *     responses:
    *       200:
    *         description: Summary report generated successfully
+   *         x-cache:
+   *           cached: true
+   *           ttlSeconds: 600
    *         content:
    *           application/json:
    *             schema:
@@ -185,6 +188,9 @@ export class ReportController {
    *     responses:
    *       200:
    *         description: Detailed report generated successfully
+   *         x-cache:
+   *           cached: true
+   *           ttlSeconds: 600
    *         content:
    *           application/json:
    *             schema:
@@ -300,6 +306,9 @@ export class ReportController {
    *     responses:
    *       200:
    *         description: Vendor report generated successfully
+   *         x-cache:
+   *           cached: true
+   *           ttlSeconds: 600
    *         content:
    *           application/json:
    *             schema:
@@ -408,6 +417,9 @@ export class ReportController {
    *     responses:
    *       200:
    *         description: Plant report generated successfully
+   *         x-cache:
+   *           cached: true
+   *           ttlSeconds: 600
    *         content:
    *           application/json:
    *             schema:
@@ -530,6 +542,9 @@ export class ReportController {
    *     responses:
    *       200:
    *         description: Time series report generated successfully
+   *         x-cache:
+   *           cached: true
+   *           ttlSeconds: 600
    *         content:
    *           application/json:
    *             schema:

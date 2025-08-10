@@ -3,6 +3,19 @@ import Vendor from '../models/vendor.model';
 import { IVendor, CreateVendorRequest, UpdateVendorRequest } from '../types/vendor.types';
 import CustomError from '../utils/customError';
 import logger from '../utils/logger';
+import { CacheService } from './cache.service';
+import {
+  getVendorsCacheKey,
+  VENDORS_CACHE_TTL,
+  VENDOR_BY_ID_CACHE_TTL,
+  VENDOR_BY_ID_KEY,
+  VENDORS_ALL_CACHE_KEY,
+  VENDORS_ACTIVE_CACHE_KEY,
+  VENDORS_INACTIVE_CACHE_KEY,
+  VENDORS_BY_PLANT_ALL_KEY,
+  VENDORS_BY_PLANT_ACTIVE_KEY,
+  VENDORS_BY_PLANT_INACTIVE_KEY,
+} from '@constants/cache.constants';
 
 export class VendorService {
   /**
@@ -28,6 +41,10 @@ export class VendorService {
       const savedVendor = await vendor.save();
 
       logger.info(`Vendor created: ${savedVendor._id}`);
+      await VendorService.invalidateCache(
+        savedVendor._id.toString(),
+        req.query?.plantId as string | undefined,
+      );
       return savedVendor;
     } catch (error) {
       logger.error('Error creating vendor:', error);
@@ -40,21 +57,25 @@ export class VendorService {
    */
   static async getVendors(req: Request): Promise<IVendor[]> {
     try {
-      const { isActive, plantId } = req.query;
-      const filter: any = {};
-
-      if (isActive !== undefined) {
-        filter.isActive = isActive === 'true';
-      }
-
-      if (plantId) {
-        filter.linkedPlants = plantId;
-      }
-
-      const vendors = await Vendor.find(filter)
-        .populate('linkedPlants', 'name code')
-        .sort({ createdAt: -1 });
-
+      const cacheKey = getVendorsCacheKey(req.query);
+      const vendors = await CacheService.getOrSet<IVendor[]>(
+        cacheKey,
+        VENDORS_CACHE_TTL,
+        async () => {
+          const { isActive, plantId } = req.query as any;
+          const filter: any = {};
+          if (isActive !== undefined) {
+            filter.isActive = isActive === 'true';
+          }
+          if (plantId) {
+            filter.linkedPlants = plantId;
+          }
+          const data = await Vendor.find(filter)
+            .populate('linkedPlants', 'name code')
+            .sort({ createdAt: -1 });
+          return data;
+        },
+      );
       logger.info(`Retrieved ${vendors.length} vendors`);
       return vendors;
     } catch (error) {
@@ -69,12 +90,18 @@ export class VendorService {
   static async getVendorById(req: Request): Promise<IVendor> {
     try {
       const { id } = req.params;
-      const vendor = await Vendor.findById(id).populate('linkedPlants', 'name code');
-
+      const cacheKey = VENDOR_BY_ID_KEY(id);
+      const vendor = await CacheService.getOrSet<IVendor | null>(
+        cacheKey,
+        VENDOR_BY_ID_CACHE_TTL,
+        async () => {
+          const data = await Vendor.findById(id).populate('linkedPlants', 'name code');
+          return data as unknown as IVendor | null;
+        },
+      );
       if (!vendor) {
         throw new CustomError('Vendor not found', 404);
       }
-
       logger.info(`Vendor retrieved: ${id}`);
       return vendor;
     } catch (error) {
@@ -123,6 +150,7 @@ export class VendorService {
       }
 
       logger.info(`Vendor updated: ${id}`);
+      await VendorService.invalidateCache(id, undefined);
       return vendor;
     } catch (error) {
       logger.error('Error updating vendor:', error);
@@ -143,10 +171,39 @@ export class VendorService {
       }
 
       logger.info(`Vendor deleted: ${id}`);
+      await VendorService.invalidateCache(id, undefined);
       return { message: 'Vendor deleted successfully' };
     } catch (error) {
       logger.error('Error deleting vendor:', error);
       throw error;
+    }
+  }
+
+  static async invalidateCache(id?: string, plantId?: string) {
+    // Invalidate list caches
+    await CacheService.del(VENDORS_ALL_CACHE_KEY);
+    await CacheService.del(VENDORS_ACTIVE_CACHE_KEY);
+    await CacheService.del(VENDORS_INACTIVE_CACHE_KEY);
+    if (plantId) {
+      await CacheService.del(VENDORS_BY_PLANT_ALL_KEY(plantId));
+      await CacheService.del(VENDORS_BY_PLANT_ACTIVE_KEY(plantId));
+      await CacheService.del(VENDORS_BY_PLANT_INACTIVE_KEY(plantId));
+    }
+    // Invalidate item cache
+    if (id) {
+      await CacheService.del(VENDOR_BY_ID_KEY(id));
+    }
+  }
+
+  // Example bulk update invalidation (if/when bulk ops exist)
+  static async invalidateBulk(vendorIds: string[], plantId?: string) {
+    await CacheService.invalidateListAndItems(VENDORS_ALL_CACHE_KEY, VENDOR_BY_ID_KEY, vendorIds);
+    await CacheService.del(VENDORS_ACTIVE_CACHE_KEY);
+    await CacheService.del(VENDORS_INACTIVE_CACHE_KEY);
+    if (plantId) {
+      await CacheService.del(VENDORS_BY_PLANT_ALL_KEY(plantId));
+      await CacheService.del(VENDORS_BY_PLANT_ACTIVE_KEY(plantId));
+      await CacheService.del(VENDORS_BY_PLANT_INACTIVE_KEY(plantId));
     }
   }
 }

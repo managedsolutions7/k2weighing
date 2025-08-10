@@ -9,6 +9,16 @@ import {
 } from '../types/report.types';
 import logger from '../utils/logger';
 import { PaginationDefaults } from '../constants';
+import { CacheService } from './cache.service';
+import {
+  REPORTS_CACHE_TTL,
+  REPORT_SUMMARY_KEY,
+  REPORT_DETAILED_KEY,
+  REPORT_VENDOR_KEY,
+  REPORT_PLANT_KEY,
+  REPORT_TIMESERIES_KEY,
+  serializeFilters,
+} from '@constants/cache.constants';
 
 export class ReportService {
   /**
@@ -31,7 +41,7 @@ export class ReportService {
         if (endDate) filter.entryDate.$lte = new Date(endDate as string);
       }
 
-      const pipeline = [
+      const pipeline: any[] = [
         { $match: filter },
         {
           $group: {
@@ -62,7 +72,12 @@ export class ReportService {
         },
       ];
 
-      const result = await Entry.aggregate(pipeline);
+      const filterString = serializeFilters({ entryType, vendor, plant, startDate, endDate });
+      const cacheKey = REPORT_SUMMARY_KEY(filterString);
+      const result = await CacheService.getOrSet<any[]>(cacheKey, REPORTS_CACHE_TTL, async () => {
+        const agg = await Entry.aggregate(pipeline);
+        return agg;
+      });
       const summary = result[0] || {
         totalEntries: 0,
         totalQuantity: 0,
@@ -124,13 +139,26 @@ export class ReportService {
       const total = await Entry.countDocuments(filter);
       const totalPages = Math.ceil(total / Number(limit));
 
-      const entries = await Entry.find(filter)
-        .populate('vendor', 'name code')
-        .populate('plant', 'name code')
-        .populate('vehicle', 'vehicleNumber driverName')
-        .sort({ entryDate: -1, createdAt: -1 })
-        .skip(skip)
-        .limit(Number(limit));
+      const filterString = serializeFilters({
+        entryType,
+        vendor,
+        plant,
+        startDate,
+        endDate,
+        page,
+        limit,
+      });
+      const cacheKey = REPORT_DETAILED_KEY(filterString);
+      const entries = await CacheService.getOrSet<any[]>(cacheKey, REPORTS_CACHE_TTL, async () => {
+        const data = await Entry.find(filter)
+          .populate('vendor', 'name code')
+          .populate('plant', 'name code')
+          .populate('vehicle', 'vehicleNumber driverName')
+          .sort({ entryDate: -1, createdAt: -1 })
+          .skip(skip)
+          .limit(Number(limit));
+        return data as any[];
+      });
 
       // Generate summary for the filtered data
       const summary = await this.generateSummaryReport(req);
@@ -171,7 +199,7 @@ export class ReportService {
         if (endDate) filter.entryDate.$lte = new Date(endDate as string);
       }
 
-      const pipeline = [
+      const pipeline: any[] = [
         { $match: filter },
         {
           $lookup: {
@@ -213,7 +241,12 @@ export class ReportService {
         { $sort: { totalAmount: -1 } },
       ];
 
-      const results = await Entry.aggregate(pipeline);
+      const filterString = serializeFilters({ entryType, plant, startDate, endDate });
+      const cacheKey = REPORT_VENDOR_KEY(filterString);
+      const results = await CacheService.getOrSet<any[]>(cacheKey, REPORTS_CACHE_TTL, async () => {
+        const data = await Entry.aggregate(pipeline);
+        return data;
+      });
 
       logger.info(`Vendor report generated for ${results.length} vendors`);
       return results;
@@ -242,7 +275,7 @@ export class ReportService {
         if (endDate) filter.entryDate.$lte = new Date(endDate as string);
       }
 
-      const pipeline = [
+      const pipeline: any[] = [
         { $match: filter },
         {
           $lookup: {
@@ -284,7 +317,12 @@ export class ReportService {
         { $sort: { totalAmount: -1 } },
       ];
 
-      const results = await Entry.aggregate(pipeline);
+      const filterString = serializeFilters({ entryType, vendor, startDate, endDate });
+      const cacheKey = REPORT_PLANT_KEY(filterString);
+      const results = await CacheService.getOrSet<any[]>(cacheKey, REPORTS_CACHE_TTL, async () => {
+        const data = await Entry.aggregate(pipeline);
+        return data;
+      });
 
       logger.info(`Plant report generated for ${results.length} plants`);
       return results;
@@ -326,7 +364,7 @@ export class ReportService {
           dateFormat = '%Y-%m-%d'; // Year-Month-Day
       }
 
-      const pipeline = [
+      const pipeline: any[] = [
         { $match: filter },
         {
           $group: {
@@ -362,7 +400,19 @@ export class ReportService {
         { $sort: { _id: 1 } },
       ];
 
-      const results = await Entry.aggregate(pipeline);
+      const filterString = serializeFilters({
+        entryType,
+        vendor,
+        plant,
+        startDate,
+        endDate,
+        groupBy,
+      });
+      const cacheKey = REPORT_TIMESERIES_KEY(filterString);
+      const results = await CacheService.getOrSet<any[]>(cacheKey, REPORTS_CACHE_TTL, async () => {
+        const data = await Entry.aggregate(pipeline);
+        return data;
+      });
 
       logger.info(`Time series report generated for ${results.length} time periods`);
       return results.map((item) => ({
@@ -380,7 +430,7 @@ export class ReportService {
    */
   static async exportToCSV(req: Request): Promise<string> {
     try {
-      const { format, includeDetails, groupBy } = req.query;
+      const { groupBy } = req.query;
 
       let data: any;
       let headers: string[];

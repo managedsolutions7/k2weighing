@@ -6,6 +6,7 @@ export interface IVehicle extends Document {
   vehicleNumber: string;
   vehicleType: VehicleType;
   capacity: number;
+  tareWeight?: number;
   driverName: string;
   driverPhone: string;
   isActive: boolean;
@@ -25,6 +26,7 @@ export interface UpdateVehicleRequest {
   vehicleNumber?: string;
   vehicleType?: VehicleType;
   capacity?: number;
+  tareWeight?: number;
   driverName?: string;
   driverPhone?: string;
   isActive?: boolean;

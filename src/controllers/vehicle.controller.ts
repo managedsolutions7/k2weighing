@@ -80,6 +80,9 @@ export class VehicleController {
    *     responses:
    *       200:
    *         description: List of vehicles
+   *         x-cache:
+   *           cached: true
+   *           ttlSeconds: 3600
    *       401:
    *         description: Unauthorized
    */
@@ -115,6 +118,9 @@ export class VehicleController {
    *     responses:
    *       200:
    *         description: Vehicle details
+   *         x-cache:
+   *           cached: true
+   *           ttlSeconds: 3600
    *       404:
    *         description: Vehicle not found
    *       401:

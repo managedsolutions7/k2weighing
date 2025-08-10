@@ -28,6 +28,11 @@ const entrySchema = new Schema<IEntry>(
       required: true,
       min: 0,
     },
+    entryWeight: { type: Number, required: true, min: 0 },
+    exitWeight: { type: Number, required: false, min: 0 },
+    expectedWeight: { type: Number, required: false },
+    exactWeight: { type: Number, required: false },
+    varianceFlag: { type: Boolean, required: false, default: null },
     rate: {
       type: Number,
       required: true,

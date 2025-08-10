@@ -15,6 +15,11 @@ export interface IEntry {
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
+  entryWeight?: number;
+  exitWeight?: number;
+  expectedWeight?: number | null;
+  exactWeight?: number | null;
+  varianceFlag?: boolean | null;
 }
 
 export interface CreateEntryRequest {
@@ -25,6 +30,7 @@ export interface CreateEntryRequest {
   quantity: number;
   rate: number;
   entryDate: string;
+  entryWeight: number;
 }
 
 export interface UpdateEntryRequest {
@@ -37,6 +43,7 @@ export interface UpdateEntryRequest {
   entryDate?: string;
   isActive?: boolean;
   totalAmount?: number;
+  exitWeight?: number;
 }
 
 export interface EntryFilters {

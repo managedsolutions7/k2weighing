@@ -6,6 +6,7 @@ const vehicleSchema = new Schema<IVehicle>(
     vehicleNumber: { type: String, required: true, unique: true },
     vehicleType: { type: String, enum: ['buy', 'sell'], required: true },
     capacity: { type: Number, required: true },
+    tareWeight: { type: Number, required: false },
     driverName: { type: String, required: true },
     driverPhone: { type: String, required: true },
     isActive: { type: Boolean, default: true },

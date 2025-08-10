@@ -5,6 +5,8 @@ import { comparePasswords, hashPassword, validatePasswordStrength } from './hash
 import { signAccessToken, signRefreshToken } from './token.service';
 import CustomError from '../utils/customError';
 import logger from '../utils/logger';
+import { CacheService } from './cache.service';
+import { USER_PROFILE_CACHE_TTL, USER_PROFILE_KEY } from '@constants/cache.constants';
 interface AuthRequest extends Request {
   user?: {
     id: string;
@@ -175,6 +177,8 @@ export class AuthService {
       await user.save();
 
       logger.info(`Password changed successfully for user: ${user.username}`);
+      // Invalidate profile cache
+      await CacheService.del(USER_PROFILE_KEY(user._id.toString()));
 
       return { message: 'Password changed successfully' };
     } catch (error) {
@@ -213,22 +217,34 @@ export class AuthService {
         throw new CustomError('User not authenticated', 401);
       }
 
-      const user = await User.findById(userId);
-      if (!user) {
-        throw new CustomError('User not found', 404);
-      }
+      const cacheKey = USER_PROFILE_KEY(userId);
+      const profile = await CacheService.getOrSet<{
+        id: string;
+        username: string;
+        name: string;
+        role: string;
+        empId: string;
+        plantId?: string;
+        createdAt: Date;
+      }>(cacheKey, USER_PROFILE_CACHE_TTL, async () => {
+        const user = await User.findById(userId);
+        if (!user) {
+          throw new CustomError('User not found', 404);
+        }
+        logger.info(`Profile fetched from DB for user: ${user.username}`);
+        return {
+          id: user._id.toString(),
+          username: user.username,
+          name: user.name,
+          role: user.role,
+          empId: user.empId,
+          plantId: user.plantId?.toString(),
+          createdAt: user.createdAt,
+        };
+      });
 
-      logger.info(`Profile retrieved for user: ${user.username}`);
-
-      return {
-        id: user._id.toString(),
-        username: user.username,
-        name: user.name,
-        role: user.role,
-        empId: user.empId,
-        plantId: user.plantId?.toString(),
-        createdAt: user.createdAt,
-      };
+      logger.info(`Profile retrieved for user: ${profile.username}`);
+      return profile;
     } catch (error) {
       logger.error('Auth service - getProfile error:', error);
       throw error;

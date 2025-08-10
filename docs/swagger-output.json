@@ -11,9 +11,7 @@
   },
   "host": "localhost:3000",
   "basePath": "/",
-  "schemes": [
-    "http"
-  ],
+  "schemes": ["http"],
   "securityDefinitions": {
     "bearerAuth": {
       "type": "apiKey",
@@ -801,9 +799,7 @@
     "/api/invoices/{id}/download": {
       "get": {
         "description": "",
-        "produces": [
-          "application/pdf"
-        ],
+        "produces": ["application/pdf"],
         "parameters": [
           {
             "name": "id",
@@ -930,9 +926,7 @@
     "/api/reports/export": {
       "get": {
         "description": "",
-        "produces": [
-          "text/csv"
-        ],
+        "produces": ["text/csv"],
         "parameters": [
           {
             "name": "authorization",
@@ -1067,9 +1061,7 @@
         },
         "linkedPlants": {
           "type": "array",
-          "example": [
-            "507f1f77bcf86cd799439011"
-          ],
+          "example": ["507f1f77bcf86cd799439011"],
           "items": {
             "type": "string"
           }

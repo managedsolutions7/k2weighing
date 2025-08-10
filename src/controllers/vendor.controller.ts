@@ -89,6 +89,9 @@ export class VendorController {
    *     responses:
    *       200:
    *         description: List of vendors
+   *         x-cache:
+   *           cached: true
+   *           ttlSeconds: 3600
    *       401:
    *         description: Unauthorized
    */
@@ -124,6 +127,9 @@ export class VendorController {
    *     responses:
    *       200:
    *         description: Vendor details
+   *         x-cache:
+   *           cached: true
+   *           ttlSeconds: 3600
    *       404:
    *         description: Vendor not found
    *       401:

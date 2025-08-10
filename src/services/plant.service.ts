@@ -46,7 +46,7 @@ export class PlantService {
 
     const cached = await CacheService.get<IPlant[]>(cacheKey);
     if (cached) {
-      logger.info(`Serving plants from cache: ${cacheKey}`);
+      // optionally log via getOrSet internally; keep this minimal
       return cached;
     }
 
@@ -57,8 +57,7 @@ export class PlantService {
 
     const plants = await Plant.find(filter).sort({ createdAt: -1 });
     await CacheService.set(cacheKey, plants, PLANTS_CACHE_TTL);
-
-    logger.info(`Stored plants in cache: ${cacheKey}`);
+    // optionally log via getOrSet internally; keep this minimal
     return plants;
   }
 
@@ -71,7 +70,7 @@ export class PlantService {
 
     const cached = await CacheService.get<IPlant>(cacheKey);
     if (cached) {
-      logger.info(`Serving plant from cache: ${cacheKey}`);
+      // optionally log via getOrSet internally; keep this minimal
       return cached;
     }
 
@@ -81,7 +80,7 @@ export class PlantService {
     }
 
     await CacheService.set(cacheKey, plant, PLANT_BY_ID_CACHE_TTL);
-    logger.info(`Stored plant in cache: ${cacheKey}`);
+    // optionally log via getOrSet internally; keep this minimal
     return plant;
   }
 
