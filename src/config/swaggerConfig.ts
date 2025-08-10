@@ -22,7 +22,10 @@ const doc = {
     },
   },
   definitions: {
-    // Plant definitions
+    ErrorResponse: {
+      success: false,
+      error: 'Detailed error message',
+    },
     Plant: {
       _id: '507f1f77bcf86cd799439011',
       name: 'Main Plant',
@@ -33,19 +36,18 @@ const doc = {
       createdAt: '2024-01-01T00:00:00.000Z',
       updatedAt: '2024-01-01T00:00:00.000Z',
     },
-    // Vehicle definitions
     Vehicle: {
       _id: '507f1f77bcf86cd799439012',
       vehicleNumber: 'MH12AB1234',
       vehicleType: 'buy',
       capacity: 10000,
+      tareWeight: 8200,
       driverName: 'John Doe',
       driverPhone: '9876543210',
       isActive: true,
       createdAt: '2024-01-01T00:00:00.000Z',
       updatedAt: '2024-01-01T00:00:00.000Z',
     },
-    // Vendor definitions
     Vendor: {
       _id: '507f1f77bcf86cd799439013',
       name: 'ABC Suppliers',
@@ -60,7 +62,6 @@ const doc = {
       createdAt: '2024-01-01T00:00:00.000Z',
       updatedAt: '2024-01-01T00:00:00.000Z',
     },
-    // User definitions
     User: {
       _id: '507f1f77bcf86cd799439014',
       username: 'admin',
@@ -71,6 +72,40 @@ const doc = {
       plantId: '507f1f77bcf86cd799439011',
       createdAt: '2024-01-01T00:00:00.000Z',
       updatedAt: '2024-01-01T00:00:00.000Z',
+    },
+    Entry: {
+      _id: '507f1f77bcf86cd799439015',
+      entryType: 'purchase',
+      vendor: '507f1f77bcf86cd799439013',
+      vehicle: '507f1f77bcf86cd799439012',
+      plant: '507f1f77bcf86cd799439011',
+      entryWeight: 15000,
+      exitWeight: 8300,
+      expectedWeight: 6800,
+      exactWeight: 6700,
+      varianceFlag: false,
+      quantity: 6700,
+      rate: 85.5,
+      totalAmount: 572, // example
+      entryDate: '2024-05-15T10:30:00.000Z',
+      createdBy: '507f1f77bcf86cd799439014',
+      isActive: true,
+      createdAt: '2024-05-15T10:30:00.000Z',
+      updatedAt: '2024-05-15T10:45:00.000Z',
+    },
+    Invoice: {
+      _id: '507f1f77bcf86cd799439099',
+      invoiceNumber: 'INV-2024-0001',
+      vendor: '507f1f77bcf86cd799439013',
+      plant: '507f1f77bcf86cd799439011',
+      entries: ['507f1f77bcf86cd799439015'],
+      totalQuantity: 6700,
+      totalAmount: 572,
+      invoiceDate: '2024-05-16T08:00:00.000Z',
+      dueDate: '2024-06-15T08:00:00.000Z',
+      status: 'draft',
+      createdBy: '507f1f77bcf86cd799439014',
+      isActive: true,
     },
   },
 };

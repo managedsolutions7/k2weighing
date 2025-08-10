@@ -6,6 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "swagger": "ts-node src/config/swaggerConfig.ts",
+    "generate:docs": "ts-node src/scripts/generateSwagger.ts && node src/scripts/generatePostman.js",
     "dev": "npm run swagger && ts-node-dev --respawn --transpile-only --require tsconfig-paths/register src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
