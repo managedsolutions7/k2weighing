@@ -3,6 +3,13 @@ import Plant from '@models/plant.model';
 import { IPlant, CreatePlantRequest, UpdatePlantRequest } from '../types/plant.types';
 import CustomError from '@utils/customError';
 import logger from '@utils/logger';
+import {
+  getPlantsCacheKey,
+  PLANT_BY_ID_CACHE_TTL,
+  PLANT_BY_ID_KEY,
+  PLANTS_CACHE_TTL,
+} from '@constants/cache.constants';
+import { CacheService } from './cache.service';
 
 export class PlantService {
   /**
@@ -20,7 +27,8 @@ export class PlantService {
 
       const plant = new Plant(plantData);
       const savedPlant = await plant.save();
-
+      //  Invalidate cache after creation
+      await PlantService.invalidateCache();
       logger.info(`Plant created: ${savedPlant._id}`);
       return savedPlant;
     } catch (error) {
@@ -32,44 +40,59 @@ export class PlantService {
   /**
    * Get all plants with optional filtering
    */
+
   static async getPlants(req: Request): Promise<IPlant[]> {
-    try {
-      const { isActive } = req.query;
-      const filter: any = {};
+    const cacheKey = getPlantsCacheKey(req.query);
 
-      if (isActive !== undefined) {
-        filter.isActive = isActive === 'true';
-      }
-
-      const plants = await Plant.find(filter).sort({ createdAt: -1 });
-      logger.info(`Retrieved ${plants.length} plants`);
-      return plants;
-    } catch (error) {
-      logger.error('Error retrieving plants:', error);
-      throw error;
+    const cached = await CacheService.get<IPlant[]>(cacheKey);
+    if (cached) {
+      logger.info(`Serving plants from cache: ${cacheKey}`);
+      return cached;
     }
+
+    const filter: any = {};
+    if (req.query.isActive !== undefined) {
+      filter.isActive = req.query.isActive === 'true';
+    }
+
+    const plants = await Plant.find(filter).sort({ createdAt: -1 });
+    await CacheService.set(cacheKey, plants, PLANTS_CACHE_TTL);
+
+    logger.info(`Stored plants in cache: ${cacheKey}`);
+    return plants;
   }
 
   /**
    * Get a single plant by ID
    */
   static async getPlantById(req: Request): Promise<IPlant> {
-    try {
-      const { id } = req.params;
-      const plant = await Plant.findById(id);
+    const { id } = req.params;
+    const cacheKey = PLANT_BY_ID_KEY(id);
 
-      if (!plant) {
-        throw new CustomError('Plant not found', 404);
-      }
-
-      logger.info(`Plant retrieved: ${id}`);
-      return plant;
-    } catch (error) {
-      logger.error('Error retrieving plant:', error);
-      throw error;
+    const cached = await CacheService.get<IPlant>(cacheKey);
+    if (cached) {
+      logger.info(`Serving plant from cache: ${cacheKey}`);
+      return cached;
     }
+
+    const plant = await Plant.findById(id);
+    if (!plant) {
+      throw new CustomError('Plant not found', 404);
+    }
+
+    await CacheService.set(cacheKey, plant, PLANT_BY_ID_CACHE_TTL);
+    logger.info(`Stored plant in cache: ${cacheKey}`);
+    return plant;
   }
 
+  static async invalidateCache(id?: string) {
+    await CacheService.del(getPlantsCacheKey({}));
+    await CacheService.del(getPlantsCacheKey({ isActive: 'true' }));
+    await CacheService.del(getPlantsCacheKey({ isActive: 'false' }));
+    if (id) {
+      await CacheService.del(PLANT_BY_ID_KEY(id));
+    }
+  }
   /**
    * Update a plant
    */
@@ -97,6 +120,7 @@ export class PlantService {
       if (!plant) {
         throw new CustomError('Plant not found', 404);
       }
+      await PlantService.invalidateCache(id);
 
       logger.info(`Plant updated: ${id}`);
       return plant;
@@ -117,6 +141,7 @@ export class PlantService {
       if (!plant) {
         throw new CustomError('Plant not found', 404);
       }
+      await PlantService.invalidateCache(id);
 
       logger.info(`Plant deleted: ${id}`);
       return { message: 'Plant deleted successfully' };

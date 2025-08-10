@@ -17,9 +17,10 @@
       "@models/*": ["models/*"],
       "@config/*": ["config/*"],
       "@services/*": ["services/*"],
-      "@types/*": ["types/*"], // ✅ FIXED: "*.types" → "types/*"
+      "@types/*": ["types/*"],
       "@swagger/*": ["swagger/*"],
-      "@validations/*": ["validations/*"]
+      "@validations/*": ["validations/*"],
+      "@constants/*": ["constants/*"]
     }
   },
   "include": ["src"]
