@@ -10,7 +10,7 @@ export const createVendorSchema = z.object({
       .min(1, ValidationMessages.REQUIRED)
       .max(100, 'Contact person name too long'),
     phone: z.string().min(10, ValidationMessages.INVALID_PHONE).max(15, 'Phone number too long'),
-    email: z.string().email(ValidationMessages.INVALID_EMAIL),
+    email: z.email(ValidationMessages.INVALID_EMAIL),
     address: z.string().min(1, ValidationMessages.REQUIRED).max(500, 'Address too long'),
     gstNumber: z
       .string()

@@ -5,7 +5,11 @@ export const createPlantSchema = z.object({
   body: z.object({
     name: z.string().min(1, ValidationMessages.REQUIRED).max(100, 'Plant name too long'),
     code: z.string().min(1, ValidationMessages.REQUIRED).max(20, 'Plant code too long'),
-    location: z.string().min(1, ValidationMessages.REQUIRED).max(200, 'Location too long'),
+    location: z
+      .string()
+      .min(1, ValidationMessages.REQUIRED)
+      .max(200, 'Location too long')
+      .optional(),
     address: z.string().min(1, ValidationMessages.REQUIRED).max(500, 'Address too long'),
   }),
 });

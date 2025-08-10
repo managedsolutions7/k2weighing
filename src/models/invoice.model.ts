@@ -70,16 +70,20 @@ const invoiceSchema = new Schema<IInvoice>(
   { timestamps: true },
 );
 
-// Pre-save middleware to generate invoice number
-invoiceSchema.pre('save', async function (next) {
-  if (this.isNew && !this.invoiceNumber) {
-    const year = new Date().getFullYear();
-    const count = await mongoose.model('Invoice').countDocuments({
-      invoiceNumber: new RegExp(`^INV-${year}-`),
-    });
-    this.invoiceNumber = `INV-${year}-${String(count + 1).padStart(4, '0')}`;
+// Ensure invoiceNumber exists before validation to satisfy required constraint
+invoiceSchema.pre('validate', async function (next) {
+  try {
+    if (this.isNew && !this.invoiceNumber) {
+      const year = new Date().getFullYear();
+      const count = await mongoose.model('Invoice').countDocuments({
+        invoiceNumber: new RegExp(`^INV-${year}-`),
+      });
+      this.invoiceNumber = `INV-${year}-${String(count + 1).padStart(4, '0')}`;
+    }
+    next();
+  } catch (err) {
+    next(err as any);
   }
-  next();
 });
 
 // Index for better query performance

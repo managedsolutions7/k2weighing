@@ -7,7 +7,7 @@ export const cacheMiddleware = (keyGenerator: (req: Request) => string, ttlSecon
       const key = keyGenerator(req);
       const cachedData = await CacheService.get(key);
 
-      if (cachedData) {
+      if (cachedData !== null) {
         return res.status(200).json({
           fromCache: true,
           data: cachedData,

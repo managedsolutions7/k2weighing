@@ -44,20 +44,14 @@ export class PlantService {
   static async getPlants(req: Request): Promise<IPlant[]> {
     const cacheKey = getPlantsCacheKey(req.query);
 
-    const cached = await CacheService.get<IPlant[]>(cacheKey);
-    if (cached) {
-      // optionally log via getOrSet internally; keep this minimal
-      return cached;
-    }
-
     const filter: any = {};
     if (req.query.isActive !== undefined) {
       filter.isActive = req.query.isActive === 'true';
     }
 
-    const plants = await Plant.find(filter).sort({ createdAt: -1 });
-    await CacheService.set(cacheKey, plants, PLANTS_CACHE_TTL);
-    // optionally log via getOrSet internally; keep this minimal
+    const plants = await CacheService.getOrSet<IPlant[]>(cacheKey, PLANTS_CACHE_TTL, async () => {
+      return Plant.find(filter).sort({ createdAt: -1 });
+    });
     return plants;
   }
 
@@ -68,19 +62,17 @@ export class PlantService {
     const { id } = req.params;
     const cacheKey = PLANT_BY_ID_KEY(id);
 
-    const cached = await CacheService.get<IPlant>(cacheKey);
-    if (cached) {
-      // optionally log via getOrSet internally; keep this minimal
-      return cached;
-    }
-
-    const plant = await Plant.findById(id);
+    const plant = await CacheService.getOrSet<IPlant | null>(
+      cacheKey,
+      PLANT_BY_ID_CACHE_TTL,
+      async () => {
+        const doc = await Plant.findById(id);
+        return (doc as unknown as IPlant) || null;
+      },
+    );
     if (!plant) {
       throw new CustomError('Plant not found', 404);
     }
-
-    await CacheService.set(cacheKey, plant, PLANT_BY_ID_CACHE_TTL);
-    // optionally log via getOrSet internally; keep this minimal
     return plant;
   }
 

@@ -27,7 +27,7 @@ export interface CreateEntryRequest {
   vendor: string;
   vehicle: string;
   plant: string;
-  quantity: number;
+  quantity?: number;
   rate: number;
   entryDate: string;
   entryWeight: number;

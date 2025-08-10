@@ -35,10 +35,7 @@ export class VehicleService {
       const savedVehicle = await vehicle.save();
 
       logger.info(`Vehicle created: ${savedVehicle._id}`);
-      await VehicleService.invalidateCache(
-        savedVehicle._id.toString(),
-        req.query?.vehicleType as string | undefined,
-      );
+      await VehicleService.invalidateCache(savedVehicle._id.toString(), [savedVehicle.vehicleType]);
       return savedVehicle;
     } catch (error) {
       logger.error('Error creating vehicle:', error);
@@ -59,11 +56,14 @@ export class VehicleService {
           const { isActive, vehicleType } = req.query as any;
           const filter: any = {};
           if (isActive !== undefined) {
-            filter.isActive = isActive === 'true';
+            filter.isActive = isActive === true || isActive === 'true';
           }
           if (vehicleType) {
-            filter.vehicleType = vehicleType;
+            filter.vehicleType = String(vehicleType);
           }
+          logger.info(
+            `[FETCH EXEC] vehicles DB | key=${cacheKey} filter=${JSON.stringify(filter)}`,
+          );
           const data = await Vehicle.find(filter).sort({ createdAt: -1 });
           return data;
         },
@@ -121,6 +121,8 @@ export class VehicleService {
         }
       }
 
+      // Fetch previous state to detect type changes for targeted invalidation
+      const prev = await Vehicle.findById(id);
       const vehicle = await Vehicle.findByIdAndUpdate(id, updateData, {
         new: true,
         runValidators: true,
@@ -131,7 +133,10 @@ export class VehicleService {
       }
 
       logger.info(`Vehicle updated: ${id}`);
-      await VehicleService.invalidateCache(id, undefined);
+      const affectedTypes = new Set<string>();
+      if (prev?.vehicleType) affectedTypes.add(String(prev.vehicleType));
+      if (vehicle.vehicleType) affectedTypes.add(String(vehicle.vehicleType));
+      await VehicleService.invalidateCache(id, Array.from(affectedTypes));
       return vehicle;
     } catch (error) {
       logger.error('Error updating vehicle:', error);
@@ -152,7 +157,10 @@ export class VehicleService {
       }
 
       logger.info(`Vehicle deleted: ${id}`);
-      await VehicleService.invalidateCache(id, undefined);
+      await VehicleService.invalidateCache(
+        id,
+        vehicle.vehicleType ? [String(vehicle.vehicleType)] : undefined,
+      );
       return { message: 'Vehicle deleted successfully' };
     } catch (error) {
       logger.error('Error deleting vehicle:', error);
@@ -160,15 +168,18 @@ export class VehicleService {
     }
   }
 
-  static async invalidateCache(id?: string, vehicleType?: string) {
+  static async invalidateCache(id?: string, vehicleTypes?: string[]) {
     // Invalidate list caches
     await CacheService.del(VEHICLES_ALL_CACHE_KEY);
     await CacheService.del(VEHICLES_ACTIVE_CACHE_KEY);
     await CacheService.del(VEHICLES_INACTIVE_CACHE_KEY);
-    if (vehicleType) {
-      await CacheService.del(VEHICLES_BY_TYPE_ALL_KEY(vehicleType));
-      await CacheService.del(VEHICLES_BY_TYPE_ACTIVE_KEY(vehicleType));
-      await CacheService.del(VEHICLES_BY_TYPE_INACTIVE_KEY(vehicleType));
+    if (vehicleTypes && vehicleTypes.length > 0) {
+      for (const vt of vehicleTypes) {
+        const typeKey = String(vt);
+        await CacheService.del(VEHICLES_BY_TYPE_ALL_KEY(typeKey));
+        await CacheService.del(VEHICLES_BY_TYPE_ACTIVE_KEY(typeKey));
+        await CacheService.del(VEHICLES_BY_TYPE_INACTIVE_KEY(typeKey));
+      }
     }
     // Invalidate item cache
     if (id) {

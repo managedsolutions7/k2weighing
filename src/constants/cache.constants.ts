@@ -58,14 +58,22 @@ const VEHICLES_BY_TYPE_INACTIVE_KEY = (vehicleType: string) =>
 const VEHICLE_BY_ID_KEY = (id: string) => withVersion(`vehicle:${id}`);
 
 const getVehiclesCacheKey = (queryParams: any): string => {
-  const { isActive, vehicleType } = queryParams || {};
-  if (vehicleType) {
-    if (isActive === 'true') return VEHICLES_BY_TYPE_ACTIVE_KEY(vehicleType);
-    if (isActive === 'false') return VEHICLES_BY_TYPE_INACTIVE_KEY(vehicleType);
-    return VEHICLES_BY_TYPE_ALL_KEY(vehicleType);
+  const params = queryParams || {};
+  const normalizedIsActive =
+    params.isActive === true || params.isActive === 'true'
+      ? 'true'
+      : params.isActive === false || params.isActive === 'false'
+        ? 'false'
+        : undefined;
+  const type = params.vehicleType ? String(params.vehicleType) : undefined;
+
+  if (type) {
+    if (normalizedIsActive === 'true') return VEHICLES_BY_TYPE_ACTIVE_KEY(type);
+    if (normalizedIsActive === 'false') return VEHICLES_BY_TYPE_INACTIVE_KEY(type);
+    return VEHICLES_BY_TYPE_ALL_KEY(type);
   }
-  if (isActive === 'true') return VEHICLES_ACTIVE_CACHE_KEY;
-  if (isActive === 'false') return VEHICLES_INACTIVE_CACHE_KEY;
+  if (normalizedIsActive === 'true') return VEHICLES_ACTIVE_CACHE_KEY;
+  if (normalizedIsActive === 'false') return VEHICLES_INACTIVE_CACHE_KEY;
   return VEHICLES_ALL_CACHE_KEY;
 };
 

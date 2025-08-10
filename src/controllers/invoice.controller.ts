@@ -546,16 +546,21 @@ export class InvoiceController {
   static async downloadPdf(req: Request, res: Response): Promise<void> {
     try {
       const { id } = req.params;
-      const invoice = await InvoiceService.getInvoiceById(req);
+      let invoice = await InvoiceService.getInvoiceById(req);
+      let filePath = invoice.pdfPath
+        ? path.isAbsolute(invoice.pdfPath)
+          ? invoice.pdfPath
+          : path.join(process.cwd(), invoice.pdfPath)
+        : '';
 
-      if (!invoice.pdfPath) {
-        throw new CustomError('PDF not generated for this invoice', 404);
-      }
-
-      const filePath = path.join(process.cwd(), invoice.pdfPath);
-
-      if (!fs.existsSync(filePath)) {
-        throw new CustomError('PDF file not found', 404);
+      // If PDF not generated or file missing, attempt to generate on-demand
+      if (!invoice.pdfPath || !fs.existsSync(filePath)) {
+        const generated = await InvoiceService.generatePdf(req);
+        filePath = path.isAbsolute(generated.pdfPath)
+          ? generated.pdfPath
+          : path.join(process.cwd(), generated.pdfPath);
+        // Refresh invoice to include pdfPath and invoiceNumber
+        invoice = await InvoiceService.getInvoiceById(req);
       }
 
       res.setHeader('Content-Type', 'application/pdf');

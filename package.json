@@ -24,7 +24,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "module",
+  "type": "commonjs",
   "dependencies": {
     "@types/pdfkit": "^0.17.2",
     "bcryptjs": "^3.0.2",

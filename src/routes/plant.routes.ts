@@ -10,13 +10,7 @@ import {
 import { verifyToken } from '@middlewares/auth';
 import { allowRoles } from '@middlewares/roleGuard';
 import { checkPlantAccess } from '@middlewares/checkPlantAccess';
-import { cacheMiddleware } from '@middlewares/cache';
-import {
-  PLANT_BY_ID_CACHE_TTL,
-  PLANT_BY_ID_KEY,
-  getPlantsCacheKey,
-  PLANTS_CACHE_TTL,
-} from '@constants/cache.constants';
+// Removed route-level cache middleware to avoid key collisions with service caching
 
 const router = Router();
 
@@ -88,12 +82,7 @@ router.post('/', validate(createPlantSchema), allowRoles('admin'), PlantControll
  *       401:
  *         description: Unauthorized
  */
-router.get(
-  '/',
-  allowRoles('admin'),
-  cacheMiddleware((req) => getPlantsCacheKey(req.query), PLANTS_CACHE_TTL),
-  PlantController.getPlants,
-);
+router.get('/', allowRoles('admin'), PlantController.getPlants);
 
 /**
  * @swagger
@@ -123,7 +112,6 @@ router.get(
   validate(getPlantSchema),
   allowRoles('admin', 'supervisor'),
   checkPlantAccess((req) => req.params.id),
-  cacheMiddleware((req) => PLANT_BY_ID_KEY(req.params.id), PLANT_BY_ID_CACHE_TTL),
   PlantController.getPlantById,
 );
 

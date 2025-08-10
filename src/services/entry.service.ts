@@ -79,10 +79,13 @@ export class EntryService {
         varianceFlag = null;
       }
 
-      const totalAmount = entryData.quantity * entryData.rate;
+      // If quantity not provided, default to 0 to satisfy model requirements; it will be updated on exit
+      const initialQuantity = typeof entryData.quantity === 'number' ? entryData.quantity : 0;
+      const totalAmount = initialQuantity * entryData.rate;
 
       const entry = new Entry({
         ...entryData,
+        quantity: initialQuantity,
         totalAmount,
         createdBy: userId,
         entryDate: entryData.entryDate ? new Date(entryData.entryDate) : new Date(),

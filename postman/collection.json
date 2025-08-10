@@ -213,7 +213,7 @@
         },
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"vehicleNumber\": \"MH12AB1234\",\n  \"vehicleType\": \"buy\",\n  \"capacity\": 10000,\n  \"driverName\": \"John Doe\",\n  \"driverPhone\": \"9876543210\"\n}",
+          "raw": "{\n  \"vehicleNumber\": \"MH12AB1234\",\n  \"vehicleType\": \"buy\",\n  \"capacity\": 10000,\n  \"tareWeight\": 8200,\n  \"driverName\": \"John Doe\",\n  \"driverPhone\": \"9876543210\"\n}",
           "options": {
             "raw": {
               "language": "json"
@@ -518,7 +518,7 @@
       }
     },
     {
-      "name": "Update exit weight and finalize entry",
+      "name": "PATCH /api/entries/{id}/exit",
       "request": {
         "method": "PATCH",
         "header": [
@@ -533,15 +533,6 @@
         ],
         "url": {
           "raw": "{{baseUrl}}/api/entries/{id}/exit"
-        },
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"exitWeight\": 8300\n}",
-          "options": {
-            "raw": {
-              "language": "json"
-            }
-          }
         }
       }
     },

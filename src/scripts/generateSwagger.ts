@@ -25,5 +25,3 @@ const endpointsFiles = ['./src/app.ts'];
 swaggerAutogen()(outputFile, endpointsFiles, doc).then(() => {
   console.log('Swagger regenerated at', outputFile);
 });
-
-

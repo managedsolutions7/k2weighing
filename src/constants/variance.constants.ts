@@ -1,1 +1,1 @@
-export const VARIANCE_TOLERANCE = 50; // kilograms
+export const VARIANCE_TOLERANCE = 80; // kilograms

@@ -41,10 +41,8 @@ export class VendorService {
       const savedVendor = await vendor.save();
 
       logger.info(`Vendor created: ${savedVendor._id}`);
-      await VendorService.invalidateCache(
-        savedVendor._id.toString(),
-        req.query?.plantId as string | undefined,
-      );
+      const plantIds = (savedVendor.linkedPlants || []).map((p: any) => String(p));
+      await VendorService.invalidateCache(savedVendor._id.toString(), plantIds);
       return savedVendor;
     } catch (error) {
       logger.error('Error creating vendor:', error);
@@ -140,6 +138,7 @@ export class VendorService {
         }
       }
 
+      const prev = await Vendor.findById(id).lean();
       const vendor = await Vendor.findByIdAndUpdate(id, updateData, {
         new: true,
         runValidators: true,
@@ -150,7 +149,12 @@ export class VendorService {
       }
 
       logger.info(`Vendor updated: ${id}`);
-      await VendorService.invalidateCache(id, undefined);
+      const prevPlantIds = new Set<string>((prev?.linkedPlants || []).map((p: any) => String(p)));
+      const nextPlantIds = new Set<string>(
+        (vendor.linkedPlants || []).map((p: any) => String(p._id ?? p)),
+      );
+      const affected = new Set<string>([...prevPlantIds, ...nextPlantIds]);
+      await VendorService.invalidateCache(id, Array.from(affected));
       return vendor;
     } catch (error) {
       logger.error('Error updating vendor:', error);
@@ -171,7 +175,8 @@ export class VendorService {
       }
 
       logger.info(`Vendor deleted: ${id}`);
-      await VendorService.invalidateCache(id, undefined);
+      const plantIds = (vendor.linkedPlants || []).map((p: any) => String(p));
+      await VendorService.invalidateCache(id, plantIds);
       return { message: 'Vendor deleted successfully' };
     } catch (error) {
       logger.error('Error deleting vendor:', error);
@@ -179,15 +184,18 @@ export class VendorService {
     }
   }
 
-  static async invalidateCache(id?: string, plantId?: string) {
+  static async invalidateCache(id?: string, plantIds?: string[]) {
     // Invalidate list caches
     await CacheService.del(VENDORS_ALL_CACHE_KEY);
     await CacheService.del(VENDORS_ACTIVE_CACHE_KEY);
     await CacheService.del(VENDORS_INACTIVE_CACHE_KEY);
-    if (plantId) {
-      await CacheService.del(VENDORS_BY_PLANT_ALL_KEY(plantId));
-      await CacheService.del(VENDORS_BY_PLANT_ACTIVE_KEY(plantId));
-      await CacheService.del(VENDORS_BY_PLANT_INACTIVE_KEY(plantId));
+    if (plantIds && plantIds.length > 0) {
+      for (const plantId of plantIds) {
+        const pid = String(plantId);
+        await CacheService.del(VENDORS_BY_PLANT_ALL_KEY(pid));
+        await CacheService.del(VENDORS_BY_PLANT_ACTIVE_KEY(pid));
+        await CacheService.del(VENDORS_BY_PLANT_INACTIVE_KEY(pid));
+      }
     }
     // Invalidate item cache
     if (id) {
@@ -196,14 +204,16 @@ export class VendorService {
   }
 
   // Example bulk update invalidation (if/when bulk ops exist)
-  static async invalidateBulk(vendorIds: string[], plantId?: string) {
+  static async invalidateBulk(vendorIds: string[], plantIds?: string[]) {
     await CacheService.invalidateListAndItems(VENDORS_ALL_CACHE_KEY, VENDOR_BY_ID_KEY, vendorIds);
     await CacheService.del(VENDORS_ACTIVE_CACHE_KEY);
     await CacheService.del(VENDORS_INACTIVE_CACHE_KEY);
-    if (plantId) {
-      await CacheService.del(VENDORS_BY_PLANT_ALL_KEY(plantId));
-      await CacheService.del(VENDORS_BY_PLANT_ACTIVE_KEY(plantId));
-      await CacheService.del(VENDORS_BY_PLANT_INACTIVE_KEY(plantId));
+    if (plantIds && plantIds.length > 0) {
+      for (const pid of plantIds) {
+        await CacheService.del(VENDORS_BY_PLANT_ALL_KEY(pid));
+        await CacheService.del(VENDORS_BY_PLANT_ACTIVE_KEY(pid));
+        await CacheService.del(VENDORS_BY_PLANT_INACTIVE_KEY(pid));
+      }
     }
   }
 }

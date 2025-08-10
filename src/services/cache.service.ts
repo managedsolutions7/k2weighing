@@ -3,6 +3,9 @@ import logger from '../utils/logger';
 import { env } from '@config/env';
 import { CACHE_VERSION } from '@constants/cache.constants';
 
+// Track in-flight fetches to prevent duplicate DB hits for the same key
+const inflightRequests = new Map<string, Promise<any>>();
+
 export class CacheService {
   static async get<T>(key: string): Promise<T | null> {
     try {
@@ -81,13 +84,29 @@ export class CacheService {
         if (env.CACHE_LOGGING) logger.info(`[CACHE HIT] ${key}`);
         return cached;
       }
-      const value = await fetchFn();
-      if (env.CACHE_LOGGING) {
-        const sizeBytes = Buffer.byteLength(JSON.stringify(value));
-        logger.info(`[CACHE MISS] ${key} | ttl=${ttlSeconds}s | size=${sizeBytes}B`);
+      // If a fetch for this key is already in progress, await it
+      if (inflightRequests.has(key)) {
+        if (env.CACHE_LOGGING) logger.info(`[CACHE WAIT] ${key}`);
+        const result = (await inflightRequests.get(key)) as T;
+        return result;
       }
-      await this.set(key, value, ttlSeconds);
-      return value;
+      if (env.CACHE_LOGGING) logger.info(`[CACHE MISS] ${key}`);
+      const fetchPromise = (async () => {
+        const value = await fetchFn();
+        if (env.CACHE_LOGGING) {
+          const sizeBytes = Buffer.byteLength(JSON.stringify(value));
+          logger.info(`[CACHE STORE] ${key} | ttl=${ttlSeconds}s | size=${sizeBytes}B`);
+        }
+        await this.set(key, value, ttlSeconds);
+        return value;
+      })();
+      inflightRequests.set(key, fetchPromise);
+      try {
+        const result = (await fetchPromise) as T;
+        return result;
+      } finally {
+        inflightRequests.delete(key);
+      }
     } catch (err) {
       logger.error(`getOrSet error for key: ${key}`, err);
       // In case of cache error, fallback to direct fetch

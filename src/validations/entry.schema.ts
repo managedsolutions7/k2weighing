@@ -6,17 +6,20 @@ export const createEntrySchema = z.object({
     vendor: z.string().min(1, 'Vendor ID is required'),
     vehicle: z.string().min(1, 'Vehicle ID is required'),
     plant: z.string().min(1, 'Plant ID is required'),
-    quantity: z.number().positive('Quantity must be positive').max(1000000, 'Quantity too high'),
+    quantity: z
+      .number()
+      .positive('Quantity must be positive')
+      .max(1000000, 'Quantity too high')
+      .optional(),
     entryWeight: z
       .number()
       .positive('Entry weight must be positive')
       .max(1000000, 'Entry weight too high'),
     rate: z.number().positive('Rate must be positive').max(100000, 'Rate too high'),
     entryDate: z
-      .string()
-      .datetime('Invalid date format')
+      .date()
       .optional()
-      .default(() => new Date().toISOString()),
+      .default(() => new Date()),
   }),
 });
 
@@ -69,9 +72,30 @@ export const getEntriesSchema = z.object({
     entryType: z.enum(['purchase', 'sale'] as const).optional(),
     vendor: z.string().optional(),
     plant: z.string().optional(),
-    startDate: z.string().datetime('Invalid start date').optional(),
-    endDate: z.string().datetime('Invalid end date').optional(),
-    isActive: z.boolean().optional(),
+    startDate: z
+      .string()
+      .optional()
+      .transform((val) => (val ? new Date(val) : undefined))
+      .refine((date) => !date || !isNaN(date.getTime()), {
+        message: 'Invalid start date',
+      }),
+    endDate: z
+      .string()
+      .optional()
+      .transform((val) => (val ? new Date(val) : undefined))
+      .refine((date) => !date || !isNaN(date.getTime()), {
+        message: 'Invalid end date',
+      }),
+    isActive: z
+      .string()
+      .optional()
+      .transform((val) => {
+        if (val === undefined) return undefined;
+        if (val === 'true') return true;
+        if (val === 'false') return false;
+        // throw error or return undefined if invalid string
+        throw new Error('isActive must be "true" or "false"');
+      }),
     page: z.string().transform(Number).optional(),
     limit: z.string().transform(Number).optional(),
   }),
