@@ -103,6 +103,11 @@ const STATIC_PLANTS_DROPDOWN_KEY = withVersion('static:plants:dropdown');
 const STATIC_VEHICLE_TYPES_KEY = withVersion('static:vehicles:types');
 const STATIC_LONG_TTL = 21600; // 6 hours
 
+// Materials
+const MATERIALS_CACHE_TTL = 3600; // 1 hour
+const MATERIALS_LIST_KEY = (filters: string) => withVersion(`materials:list:${filters}`);
+const MATERIAL_BY_ID_KEY = (id: string) => withVersion(`materials:item:${id}`);
+
 // Helper to build stable filter strings
 const serializeFilters = (obj: any): string => {
   if (!obj || typeof obj !== 'object') return 'none';
@@ -166,6 +171,10 @@ export {
   STATIC_PLANTS_DROPDOWN_KEY,
   STATIC_VEHICLE_TYPES_KEY,
   STATIC_LONG_TTL,
+  // materials
+  MATERIALS_CACHE_TTL,
+  MATERIALS_LIST_KEY,
+  MATERIAL_BY_ID_KEY,
   // helpers
   serializeFilters,
 };

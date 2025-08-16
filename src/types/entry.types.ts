@@ -3,6 +3,7 @@ import { EntryType } from '../constants';
 
 export interface IEntry {
   _id: mongoose.Types.ObjectId;
+  entryNumber: string;
   entryType: EntryType;
   vendor: mongoose.Types.ObjectId;
   vehicle: mongoose.Types.ObjectId;
@@ -20,6 +21,21 @@ export interface IEntry {
   expectedWeight?: number | null;
   exactWeight?: number | null;
   varianceFlag?: boolean | null;
+  // Review/flag workflow
+  isReviewed?: boolean;
+  reviewedBy?: mongoose.Types.ObjectId | null;
+  reviewedAt?: Date | null;
+  reviewNotes?: string | null;
+  flagged?: boolean;
+  flagReason?: string | null;
+  // Manual weight entry marker
+  manualWeight?: boolean;
+  // New sale/purchase fields
+  palletteType?: 'loose' | 'packed';
+  noOfBags?: number;
+  weightPerBag?: number;
+  packedWeight?: number;
+  materialType?: mongoose.Types.ObjectId;
 }
 
 export interface CreateEntryRequest {
@@ -31,6 +47,12 @@ export interface CreateEntryRequest {
   rate: number;
   entryDate: string;
   entryWeight: number;
+  manualWeight?: boolean;
+  palletteType?: 'loose' | 'packed';
+  noOfBags?: number;
+  weightPerBag?: number;
+  packedWeight?: number;
+  materialType?: string;
 }
 
 export interface UpdateEntryRequest {
@@ -44,6 +66,13 @@ export interface UpdateEntryRequest {
   isActive?: boolean;
   totalAmount?: number;
   exitWeight?: number;
+  // review/flag updates
+  isReviewed?: boolean;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  reviewNotes?: string | null;
+  flagged?: boolean;
+  flagReason?: string | null;
 }
 
 export interface EntryFilters {
@@ -53,10 +82,13 @@ export interface EntryFilters {
   startDate?: string;
   endDate?: string;
   isActive?: boolean;
+  flagged?: boolean;
+  isReviewed?: boolean;
 }
 
 export interface EntryWithRelations {
   _id: mongoose.Types.ObjectId;
+  entryNumber: string;
   entryType: EntryType;
   vendor: {
     _id: mongoose.Types.ObjectId;

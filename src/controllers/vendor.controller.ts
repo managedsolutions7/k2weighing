@@ -58,7 +58,13 @@ export class VendorController {
       const vendor = await VendorService.createVendor(req);
       res.status(201).json({
         success: true,
-        data: vendor,
+        data: {
+          _id: vendor._id,
+          vendorNumber: (vendor as any).vendorNumber,
+          name: vendor.name,
+          code: vendor.code,
+          linkedPlants: vendor.linkedPlants,
+        },
         message: 'Vendor created successfully',
       });
     } catch (error) {
@@ -98,11 +104,9 @@ export class VendorController {
   static async getVendors(req: Request, res: Response): Promise<void> {
     try {
       const vendors = await VendorService.getVendors(req);
-      res.status(200).json({
-        success: true,
-        data: vendors,
-        message: 'Vendors retrieved successfully',
-      });
+      res
+        .status(200)
+        .json({ success: true, data: vendors, message: 'Vendors retrieved successfully' });
     } catch (error) {
       logger.error('Vendor controller - getVendors error:', error);
       throw error;

@@ -6,6 +6,7 @@ import {
   updatePlantSchema,
   getPlantSchema,
   deletePlantSchema,
+  getPlantsSchema,
 } from '@validations/plant.schema';
 import { verifyToken } from '@middlewares/auth';
 import { allowRoles } from '@middlewares/roleGuard';
@@ -82,7 +83,7 @@ router.post('/', validate(createPlantSchema), allowRoles('admin'), PlantControll
  *       401:
  *         description: Unauthorized
  */
-router.get('/', allowRoles('admin'), PlantController.getPlants);
+router.get('/', validate(getPlantsSchema), allowRoles('admin'), PlantController.getPlants);
 
 /**
  * @swagger

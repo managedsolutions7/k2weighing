@@ -25,6 +25,13 @@ const invoiceSchema = new Schema<IInvoice>(
         required: true,
       },
     ],
+    // Map of materialType -> rate for this invoice
+    materialRates: {
+      type: Map,
+      of: Number,
+      required: true,
+      default: new Map(),
+    },
     totalQuantity: {
       type: Number,
       required: true,

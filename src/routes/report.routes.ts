@@ -3,6 +3,14 @@ import { ReportController } from '../controllers/report.controller';
 import { validate } from '../middlewares/validator';
 import { verifyToken } from '../middlewares/auth';
 import { allowRoles } from '../middlewares/roleGuard';
+import {
+  summaryReportSchema,
+  detailedReportSchema,
+  vendorReportSchema,
+  plantReportSchema,
+  timeSeriesReportSchema,
+  exportReportSchema,
+} from '../validations/report.schema';
 
 const router = Router();
 
@@ -72,7 +80,7 @@ router.use(allowRoles('admin', 'supervisor'));
  *       403:
  *         description: Forbidden - admin/supervisor access required
  */
-router.get('/summary', ReportController.getSummaryReport);
+router.get('/summary', validate(summaryReportSchema), ReportController.getSummaryReport);
 
 /**
  * @swagger
@@ -141,7 +149,7 @@ router.get('/summary', ReportController.getSummaryReport);
  *       403:
  *         description: Forbidden - admin/supervisor access required
  */
-router.get('/detailed', ReportController.getDetailedReport);
+router.get('/detailed', validate(detailedReportSchema), ReportController.getDetailedReport);
 
 /**
  * @swagger
@@ -190,7 +198,7 @@ router.get('/detailed', ReportController.getDetailedReport);
  *       403:
  *         description: Forbidden - admin/supervisor access required
  */
-router.get('/vendors', ReportController.getVendorReport);
+router.get('/vendors', validate(vendorReportSchema), ReportController.getVendorReport);
 
 /**
  * @swagger
@@ -239,7 +247,7 @@ router.get('/vendors', ReportController.getVendorReport);
  *       403:
  *         description: Forbidden - admin/supervisor access required
  */
-router.get('/plants', ReportController.getPlantReport);
+router.get('/plants', validate(plantReportSchema), ReportController.getPlantReport);
 
 /**
  * @swagger
@@ -302,7 +310,7 @@ router.get('/plants', ReportController.getPlantReport);
  *       403:
  *         description: Forbidden - admin/supervisor access required
  */
-router.get('/timeseries', ReportController.getTimeSeriesReport);
+router.get('/timeseries', validate(timeSeriesReportSchema), ReportController.getTimeSeriesReport);
 
 /**
  * @swagger
@@ -376,6 +384,13 @@ router.get('/timeseries', ReportController.getTimeSeriesReport);
  *       403:
  *         description: Forbidden - admin/supervisor access required
  */
-router.get('/export', ReportController.exportReport);
+router.get('/export', validate(exportReportSchema), ReportController.exportReport);
+
+// Supervisor dashboard data
+router.get(
+  '/dashboard/supervisor',
+  validate(summaryReportSchema),
+  ReportController.getSummaryReport,
+);
 
 export default router;

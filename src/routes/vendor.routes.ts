@@ -6,6 +6,7 @@ import {
   updateVendorSchema,
   getVendorSchema,
   deleteVendorSchema,
+  getVendorsSchema,
 } from '../validations/vendor.schema';
 import { verifyToken } from '../middlewares/auth';
 import { allowRoles } from '../middlewares/roleGuard';
@@ -16,7 +17,7 @@ const router = Router();
 router.use(verifyToken);
 
 // Apply role-based access control
-router.use(allowRoles('admin', 'supervisor'));
+router.use(allowRoles('admin', 'supervisor', 'operator'));
 
 /**
  * @swagger
@@ -75,7 +76,12 @@ router.use(allowRoles('admin', 'supervisor'));
  *       401:
  *         description: Unauthorized
  */
-router.post('/', validate(createVendorSchema), VendorController.createVendor);
+router.post(
+  '/',
+  allowRoles('admin', 'supervisor'),
+  validate(createVendorSchema),
+  VendorController.createVendor,
+);
 
 /**
  * @swagger
@@ -102,7 +108,8 @@ router.post('/', validate(createVendorSchema), VendorController.createVendor);
  *       401:
  *         description: Unauthorized
  */
-router.get('/', VendorController.getVendors);
+// Vendor list/search (operator gets minimal subset via service select)
+router.get('/', validate(getVendorsSchema), VendorController.getVendors);
 
 /**
  * @swagger
@@ -181,7 +188,12 @@ router.get('/:id', validate(getVendorSchema), VendorController.getVendorById);
  *       401:
  *         description: Unauthorized
  */
-router.put('/:id', validate(updateVendorSchema), VendorController.updateVendor);
+router.put(
+  '/:id',
+  allowRoles('admin', 'supervisor'),
+  validate(updateVendorSchema),
+  VendorController.updateVendor,
+);
 
 /**
  * @swagger
@@ -206,6 +218,11 @@ router.put('/:id', validate(updateVendorSchema), VendorController.updateVendor);
  *       401:
  *         description: Unauthorized
  */
-router.delete('/:id', validate(deleteVendorSchema), VendorController.deleteVendor);
+router.delete(
+  '/:id',
+  allowRoles('admin', 'supervisor'),
+  validate(deleteVendorSchema),
+  VendorController.deleteVendor,
+);
 
 export default router;

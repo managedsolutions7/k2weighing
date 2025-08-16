@@ -7,13 +7,14 @@ import { env } from '../config/env';
 export interface TokenPayload {
   id: string;
   role: string;
+  plantId?: string;
   iat?: number;
   exp?: number;
 }
 
-export const signAccessToken = (userId: string, role: string): string => {
+export const signAccessToken = (userId: string, role: string, plantId?: string): string => {
   try {
-    const payload: TokenPayload = { id: userId, role };
+    const payload: TokenPayload = { id: userId, role, plantId };
     const token = jwt.sign(payload, env.JWT_SECRET, {
       expiresIn: '7d',
       issuer: 'biofuel-management-system',

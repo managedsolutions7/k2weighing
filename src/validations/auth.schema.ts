@@ -47,3 +47,14 @@ export const changePasswordSchema = z.object({
       .max(100, ValidationMessages.PASSWORD_TOO_LONG),
   }),
 });
+
+export const updateUserSchema = z.object({
+  params: z.object({
+    id: z.string().min(1, 'User ID is required'),
+  }),
+  body: z.object({
+    role: z.enum(['admin', 'supervisor', 'operator'] as const).optional(),
+    plantId: z.string().nullable().optional(),
+    isActive: z.boolean().optional(),
+  }),
+});

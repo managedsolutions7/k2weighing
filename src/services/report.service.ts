@@ -28,36 +28,37 @@ export class ReportService {
     try {
       const { entryType, vendor, plant, startDate, endDate } = req.query;
 
-      const filter: any = { isActive: true };
+      const entryFilter: any = { isActive: true };
+      if (entryType) entryFilter.entryType = entryType;
+      if (vendor) entryFilter.vendor = vendor;
+      if (plant) entryFilter.plant = plant;
 
-      if (entryType) filter.entryType = entryType;
-      if (vendor) filter.vendor = vendor;
-      if (plant) filter.plant = plant;
+      // Enforce supervisor plant scoping
+      const requester = (req as any).user as { role?: string; plantId?: string } | undefined;
+      if (requester?.role === 'supervisor' && requester.plantId) {
+        entryFilter.plant = requester.plantId;
+      }
 
       // Date range filtering
       if (startDate || endDate) {
-        filter.entryDate = {};
-        if (startDate) filter.entryDate.$gte = new Date(startDate as string);
-        if (endDate) filter.entryDate.$lte = new Date(endDate as string);
+        entryFilter.entryDate = {};
+        if (startDate) entryFilter.entryDate.$gte = new Date(startDate as string);
+        if (endDate) entryFilter.entryDate.$lte = new Date(endDate as string);
       }
 
-      const pipeline: any[] = [
-        { $match: filter },
+      // Entry-based KPIs for counts and quantity
+      const entryPipeline: any[] = [
+        { $match: entryFilter },
         {
           $group: {
             _id: null,
             totalEntries: { $sum: 1 },
             totalQuantity: { $sum: '$quantity' },
-            totalAmount: { $sum: '$totalAmount' },
-            averageRate: { $avg: '$rate' },
             purchaseEntries: {
               $sum: { $cond: [{ $eq: ['$entryType', 'purchase'] }, 1, 0] },
             },
             purchaseQuantity: {
               $sum: { $cond: [{ $eq: ['$entryType', 'purchase'] }, '$quantity', 0] },
-            },
-            purchaseAmount: {
-              $sum: { $cond: [{ $eq: ['$entryType', 'purchase'] }, '$totalAmount', 0] },
             },
             saleEntries: {
               $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, 1, 0] },
@@ -65,29 +66,107 @@ export class ReportService {
             saleQuantity: {
               $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, '$quantity', 0] },
             },
-            saleAmount: {
-              $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, '$totalAmount', 0] },
-            },
           },
         },
       ];
 
+      // Invoice-based totals and amounts
+      const invoiceMatch: any = {};
+      if (vendor) invoiceMatch.vendor = vendor;
+      if (plant) invoiceMatch.plant = plant;
+      if (startDate || endDate) {
+        invoiceMatch.invoiceDate = {};
+        if (startDate) invoiceMatch.invoiceDate.$gte = new Date(startDate as string);
+        if (endDate) invoiceMatch.invoiceDate.$lte = new Date(endDate as string);
+      }
+
       const filterString = serializeFilters({ entryType, vendor, plant, startDate, endDate });
       const cacheKey = REPORT_SUMMARY_KEY(filterString);
-      const result = await CacheService.getOrSet<any[]>(cacheKey, REPORTS_CACHE_TTL, async () => {
-        const agg = await Entry.aggregate(pipeline);
-        return agg;
-      });
-      const summary = result[0] || {
+      const [entryAgg, amountAgg] = await CacheService.getOrSet<any[]>(
+        cacheKey,
+        REPORTS_CACHE_TTL,
+        async () => {
+          const [eAgg, aAgg] = await Promise.all([
+            Entry.aggregate(entryPipeline),
+            // compute totalAmount and type-wise amounts via invoices + lookup entries
+            Entry.db.models.Invoice.aggregate([
+              { $match: invoiceMatch },
+              {
+                $lookup: {
+                  from: 'entries',
+                  localField: 'entries',
+                  foreignField: '_id',
+                  as: 'entryDocs',
+                },
+              },
+              { $unwind: '$entryDocs' },
+              // optional filter by entryType
+              ...(entryType ? [{ $match: { 'entryDocs.entryType': entryType } }] : []),
+              {
+                $addFields: {
+                  materialKey: {
+                    $cond: [
+                      { $ne: ['$entryDocs.materialType', null] },
+                      { $toString: '$entryDocs.materialType' },
+                      null,
+                    ],
+                  },
+                },
+              },
+              {
+                $addFields: {
+                  rate: {
+                    $cond: [
+                      { $ne: ['$materialKey', null] },
+                      {
+                        $ifNull: [
+                          { $getField: { input: '$materialRates', field: '$materialKey' } },
+                          0,
+                        ],
+                      },
+                      0,
+                    ],
+                  },
+                },
+              },
+              {
+                $addFields: {
+                  lineAmount: { $multiply: [{ $ifNull: ['$entryDocs.quantity', 0] }, '$rate'] },
+                },
+              },
+              {
+                $group: {
+                  _id: null,
+                  totalAmount: { $sum: '$lineAmount' },
+                  purchaseAmount: {
+                    $sum: {
+                      $cond: [{ $eq: ['$entryDocs.entryType', 'purchase'] }, '$lineAmount', 0],
+                    },
+                  },
+                  saleAmount: {
+                    $sum: {
+                      $cond: [{ $eq: ['$entryDocs.entryType', 'sale'] }, '$lineAmount', 0],
+                    },
+                  },
+                },
+              },
+            ]),
+          ]);
+          return [eAgg, aAgg];
+        },
+      );
+
+      const e = (entryAgg && entryAgg[0]) || {
         totalEntries: 0,
         totalQuantity: 0,
-        totalAmount: 0,
-        averageRate: 0,
         purchaseEntries: 0,
         purchaseQuantity: 0,
-        purchaseAmount: 0,
         saleEntries: 0,
         saleQuantity: 0,
+      };
+      const a = (amountAgg && amountAgg[0]) || {
+        totalAmount: 0,
+        purchaseAmount: 0,
         saleAmount: 0,
       };
 
@@ -96,9 +175,19 @@ export class ReportService {
         end: endDate ? new Date(endDate as string) : new Date(),
       };
 
-      logger.info(`Summary report generated with ${summary.totalEntries} entries`);
+      const averageRate = e.totalQuantity > 0 ? a.totalAmount / e.totalQuantity : 0;
+      logger.info(`Summary report generated with ${e.totalEntries} entries`);
       return {
-        ...summary,
+        totalEntries: e.totalEntries,
+        totalQuantity: e.totalQuantity,
+        totalAmount: a.totalAmount,
+        averageRate,
+        purchaseEntries: e.purchaseEntries,
+        purchaseQuantity: e.purchaseQuantity,
+        purchaseAmount: a.purchaseAmount,
+        saleEntries: e.saleEntries,
+        saleQuantity: e.saleQuantity,
+        saleAmount: a.saleAmount,
         dateRange,
       };
     } catch (error) {
@@ -127,6 +216,10 @@ export class ReportService {
       if (entryType) filter.entryType = entryType;
       if (vendor) filter.vendor = vendor;
       if (plant) filter.plant = plant;
+      const requester = (req as any).user as { role?: string; plantId?: string } | undefined;
+      if (requester?.role === 'supervisor' && requester.plantId) {
+        filter.plant = requester.plantId;
+      }
 
       // Date range filtering
       if (startDate || endDate) {
@@ -160,7 +253,7 @@ export class ReportService {
         return data as any[];
       });
 
-      // Generate summary for the filtered data
+      // Generate summary (now computes amounts from invoices)
       const summary = await this.generateSummaryReport(req);
 
       logger.info(`Detailed report generated with ${entries.length} entries out of ${total}`);
@@ -191,6 +284,10 @@ export class ReportService {
 
       if (entryType) filter.entryType = entryType;
       if (plant) filter.plant = plant;
+      const requester = (req as any).user as { role?: string; plantId?: string } | undefined;
+      if (requester?.role === 'supervisor' && requester.plantId) {
+        filter.plant = requester.plantId;
+      }
 
       // Date range filtering
       if (startDate || endDate) {
@@ -199,8 +296,40 @@ export class ReportService {
         if (endDate) filter.entryDate.$lte = new Date(endDate as string);
       }
 
+      // Compute vendor report amounts using invoices joined with entries
       const pipeline: any[] = [
-        { $match: filter },
+        { $match: { isActive: true, ...(plant ? { plant } : {}) } },
+        {
+          $lookup: {
+            from: 'entries',
+            localField: 'entries',
+            foreignField: '_id',
+            as: 'entryDocs',
+          },
+        },
+        { $unwind: '$entryDocs' },
+        ...(entryType ? [{ $match: { 'entryDocs.entryType': entryType } }] : []),
+        {
+          $addFields: {
+            materialKey: { $toString: '$entryDocs.materialType' },
+            rate: {
+              $ifNull: [
+                {
+                  $getField: {
+                    input: '$materialRates',
+                    field: { $toString: '$entryDocs.materialType' },
+                  },
+                },
+                0,
+              ],
+            },
+          },
+        },
+        {
+          $addFields: {
+            lineAmount: { $multiply: [{ $ifNull: ['$entryDocs.quantity', 0] }, '$rate'] },
+          },
+        },
         {
           $lookup: {
             from: 'vendors',
@@ -215,26 +344,36 @@ export class ReportService {
             _id: '$vendor',
             vendor: { $first: '$vendorInfo' },
             totalEntries: { $sum: 1 },
-            totalQuantity: { $sum: '$quantity' },
-            totalAmount: { $sum: '$totalAmount' },
-            averageRate: { $avg: '$rate' },
+            totalQuantity: { $sum: '$entryDocs.quantity' },
+            totalAmount: { $sum: '$lineAmount' },
+            averageRate: {
+              $avg: {
+                $cond: [
+                  { $gt: ['$entryDocs.quantity', 0] },
+                  { $divide: ['$lineAmount', '$entryDocs.quantity'] },
+                  0,
+                ],
+              },
+            },
             purchaseEntries: {
-              $sum: { $cond: [{ $eq: ['$entryType', 'purchase'] }, 1, 0] },
+              $sum: { $cond: [{ $eq: ['$entryDocs.entryType', 'purchase'] }, 1, 0] },
             },
             purchaseQuantity: {
-              $sum: { $cond: [{ $eq: ['$entryType', 'purchase'] }, '$quantity', 0] },
+              $sum: {
+                $cond: [{ $eq: ['$entryDocs.entryType', 'purchase'] }, '$entryDocs.quantity', 0],
+              },
             },
             purchaseAmount: {
-              $sum: { $cond: [{ $eq: ['$entryType', 'purchase'] }, '$totalAmount', 0] },
+              $sum: { $cond: [{ $eq: ['$entryDocs.entryType', 'purchase'] }, '$lineAmount', 0] },
             },
-            saleEntries: {
-              $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, 1, 0] },
-            },
+            saleEntries: { $sum: { $cond: [{ $eq: ['$entryDocs.entryType', 'sale'] }, 1, 0] } },
             saleQuantity: {
-              $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, '$quantity', 0] },
+              $sum: {
+                $cond: [{ $eq: ['$entryDocs.entryType', 'sale'] }, '$entryDocs.quantity', 0],
+              },
             },
             saleAmount: {
-              $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, '$totalAmount', 0] },
+              $sum: { $cond: [{ $eq: ['$entryDocs.entryType', 'sale'] }, '$lineAmount', 0] },
             },
           },
         },
@@ -267,6 +406,10 @@ export class ReportService {
 
       if (entryType) filter.entryType = entryType;
       if (vendor) filter.vendor = vendor;
+      const requester = (req as any).user as { role?: string; plantId?: string } | undefined;
+      if (requester?.role === 'supervisor' && requester.plantId) {
+        filter.plant = requester.plantId;
+      }
 
       // Date range filtering
       if (startDate || endDate) {
@@ -276,7 +419,37 @@ export class ReportService {
       }
 
       const pipeline: any[] = [
-        { $match: filter },
+        { $match: { isActive: true, ...(vendor ? { vendor } : {}) } },
+        {
+          $lookup: {
+            from: 'entries',
+            localField: 'entries',
+            foreignField: '_id',
+            as: 'entryDocs',
+          },
+        },
+        { $unwind: '$entryDocs' },
+        ...(entryType ? [{ $match: { 'entryDocs.entryType': entryType } }] : []),
+        {
+          $addFields: {
+            rate: {
+              $ifNull: [
+                {
+                  $getField: {
+                    input: '$materialRates',
+                    field: { $toString: '$entryDocs.materialType' },
+                  },
+                },
+                0,
+              ],
+            },
+          },
+        },
+        {
+          $addFields: {
+            lineAmount: { $multiply: [{ $ifNull: ['$entryDocs.quantity', 0] }, '$rate'] },
+          },
+        },
         {
           $lookup: {
             from: 'plants',
@@ -291,26 +464,36 @@ export class ReportService {
             _id: '$plant',
             plant: { $first: '$plantInfo' },
             totalEntries: { $sum: 1 },
-            totalQuantity: { $sum: '$quantity' },
-            totalAmount: { $sum: '$totalAmount' },
-            averageRate: { $avg: '$rate' },
+            totalQuantity: { $sum: '$entryDocs.quantity' },
+            totalAmount: { $sum: '$lineAmount' },
+            averageRate: {
+              $avg: {
+                $cond: [
+                  { $gt: ['$entryDocs.quantity', 0] },
+                  { $divide: ['$lineAmount', '$entryDocs.quantity'] },
+                  0,
+                ],
+              },
+            },
             purchaseEntries: {
-              $sum: { $cond: [{ $eq: ['$entryType', 'purchase'] }, 1, 0] },
+              $sum: { $cond: [{ $eq: ['$entryDocs.entryType', 'purchase'] }, 1, 0] },
             },
             purchaseQuantity: {
-              $sum: { $cond: [{ $eq: ['$entryType', 'purchase'] }, '$quantity', 0] },
+              $sum: {
+                $cond: [{ $eq: ['$entryDocs.entryType', 'purchase'] }, '$entryDocs.quantity', 0],
+              },
             },
             purchaseAmount: {
-              $sum: { $cond: [{ $eq: ['$entryType', 'purchase'] }, '$totalAmount', 0] },
+              $sum: { $cond: [{ $eq: ['$entryDocs.entryType', 'purchase'] }, '$lineAmount', 0] },
             },
-            saleEntries: {
-              $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, 1, 0] },
-            },
+            saleEntries: { $sum: { $cond: [{ $eq: ['$entryDocs.entryType', 'sale'] }, 1, 0] } },
             saleQuantity: {
-              $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, '$quantity', 0] },
+              $sum: {
+                $cond: [{ $eq: ['$entryDocs.entryType', 'sale'] }, '$entryDocs.quantity', 0],
+              },
             },
             saleAmount: {
-              $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, '$totalAmount', 0] },
+              $sum: { $cond: [{ $eq: ['$entryDocs.entryType', 'sale'] }, '$lineAmount', 0] },
             },
           },
         },
@@ -344,6 +527,10 @@ export class ReportService {
       if (entryType) filter.entryType = entryType;
       if (vendor) filter.vendor = vendor;
       if (plant) filter.plant = plant;
+      const requester = (req as any).user as { role?: string; plantId?: string } | undefined;
+      if (requester?.role === 'supervisor' && requester.plantId) {
+        filter.plant = requester.plantId;
+      }
 
       // Date range filtering
       if (startDate || endDate) {

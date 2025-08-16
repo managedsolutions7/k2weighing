@@ -68,3 +68,19 @@ export const deleteVehicleSchema = z.object({
     id: z.string().min(1, 'Vehicle ID is required'),
   }),
 });
+
+export const getVehiclesSchema = z.object({
+  query: z.object({
+    isActive: z
+      .string()
+      .optional()
+      .transform((val) => {
+        if (val === undefined) return undefined;
+        if (val === 'true') return true;
+        if (val === 'false') return false;
+        throw new Error('isActive must be "true" or "false"');
+      }),
+    vehicleType: z.enum(['buy', 'sell'] as const).optional(),
+    q: z.string().optional(),
+  }),
+});

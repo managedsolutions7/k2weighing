@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 
 export interface IVendor extends Document {
   _id: mongoose.Types.ObjectId;
+  vendorNumber: string;
   name: string;
   code: string;
   contactPerson: string;

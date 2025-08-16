@@ -538,4 +538,30 @@ export class EntryController {
       throw error;
     }
   }
+
+  /**
+   * Review an entry (supervisor/admin)
+   */
+  static async reviewEntry(req: Request, res: Response): Promise<void> {
+    try {
+      const updated = await EntryService.reviewEntry(req);
+      res.status(200).json({ success: true, data: updated, message: 'Entry reviewed' });
+    } catch (error) {
+      logger.error('Entry controller - reviewEntry error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Flag/unflag an entry (supervisor/admin)
+   */
+  static async flagEntry(req: Request, res: Response): Promise<void> {
+    try {
+      const updated = await EntryService.flagEntry(req);
+      res.status(200).json({ success: true, data: updated, message: 'Entry flag updated' });
+    } catch (error) {
+      logger.error('Entry controller - flagEntry error:', error);
+      throw error;
+    }
+  }
 }

@@ -2,9 +2,16 @@
 import { Router } from 'express';
 import { AuthController } from '../controllers/auth.controller';
 import { validate } from '../middlewares/validator';
-import { loginSchema, registerSchema, changePasswordSchema } from '../validations/auth.schema';
+import {
+  loginSchema,
+  registerSchema,
+  changePasswordSchema,
+  updateUserSchema,
+} from '../validations/auth.schema';
 import { verifyRefreshToken, verifyToken } from '../middlewares/auth';
 import { allowRoles } from '../middlewares/roleGuard';
+import User from '../models/user.model';
+import { Request, Response } from 'express';
 
 const router = Router();
 
@@ -177,5 +184,32 @@ router.post('/refresh', verifyRefreshToken, AuthController.refreshToken);
  *         description: User not found
  */
 router.get('/profile', verifyToken, AuthController.getProfile);
+
+// Admin - update user role/plant/status
+router.patch(
+  '/users/:id',
+  verifyToken,
+  allowRoles('admin'),
+  validate(updateUserSchema),
+  async (req: Request, res: Response) => {
+    const { id } = req.params;
+    const { role, plantId, isActive } = req.body as {
+      role?: 'admin' | 'supervisor' | 'operator';
+      plantId?: string | null;
+      isActive?: boolean;
+    };
+    const update: any = {};
+    if (role) update.role = role;
+    if (plantId !== undefined) update.plantId = plantId || undefined;
+    if (typeof isActive === 'boolean') update.isActive = isActive;
+    const user = await User.findByIdAndUpdate(id, update, { new: true });
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+    res.json({
+      success: true,
+      data: { id: user._id, role: user.role, plantId: user.plantId, isActive: user.isActive },
+      message: 'User updated',
+    });
+  },
+);
 
 export default router;

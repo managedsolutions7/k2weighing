@@ -53,13 +53,17 @@ export class VehicleService {
         cacheKey,
         VEHICLES_CACHE_TTL,
         async () => {
-          const { isActive, vehicleType } = req.query as any;
+          const { isActive, vehicleType, q } = req.query as any;
           const filter: any = {};
           if (isActive !== undefined) {
             filter.isActive = isActive === true || isActive === 'true';
           }
           if (vehicleType) {
             filter.vehicleType = String(vehicleType);
+          }
+          if (q) {
+            const regex = new RegExp(String(q).trim(), 'i');
+            filter.$or = [{ vehicleNumber: regex }, { vehicleCode: regex }];
           }
           logger.info(
             `[FETCH EXEC] vehicles DB | key=${cacheKey} filter=${JSON.stringify(filter)}`,

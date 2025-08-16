@@ -9,6 +9,7 @@ export interface AuthRequest extends Request {
   user?: {
     id: string;
     role: string;
+    plantId?: string;
   };
   refreshToken?: string; // Add this line
 }
@@ -34,6 +35,7 @@ export const verifyToken = (req: AuthRequest, res: Response, next: NextFunction)
     req.user = {
       id: decoded.id,
       role: decoded.role,
+      plantId: decoded.plantId,
     };
 
     logger.info(`Token verified for user: ${decoded.id}`);

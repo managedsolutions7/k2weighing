@@ -25,10 +25,12 @@ export class VendorService {
     try {
       const vendorData: CreateVendorRequest = req.body;
 
-      // Check if vendor code already exists
-      const existingVendor = await Vendor.findOne({ code: vendorData.code });
-      if (existingVendor) {
-        throw new CustomError('Vendor code already exists', 400);
+      // If code provided, ensure uniqueness. Code is optional (vendorNumber will be primary id for search)
+      if (vendorData.code) {
+        const existingVendor = await Vendor.findOne({ code: vendorData.code });
+        if (existingVendor) {
+          throw new CustomError('Vendor code already exists', 400);
+        }
       }
 
       // Check if GST number already exists
@@ -60,7 +62,7 @@ export class VendorService {
         cacheKey,
         VENDORS_CACHE_TTL,
         async () => {
-          const { isActive, plantId } = req.query as any;
+          const { isActive, plantId, q, limit } = req.query as any;
           const filter: any = {};
           if (isActive !== undefined) {
             filter.isActive = isActive === 'true';
@@ -68,9 +70,14 @@ export class VendorService {
           if (plantId) {
             filter.linkedPlants = plantId;
           }
+          if (q) {
+            const regex = new RegExp(String(q).trim(), 'i');
+            filter.$or = [{ name: regex }, { code: regex }, { vendorNumber: regex }];
+          }
           const data = await Vendor.find(filter)
             .populate('linkedPlants', 'name code')
-            .sort({ createdAt: -1 });
+            .sort({ createdAt: -1 })
+            .limit(Math.min(Number(limit) || 25, 50));
           return data;
         },
       );

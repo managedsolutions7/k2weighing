@@ -8,6 +8,8 @@ import {
   deleteEntrySchema,
   getEntriesSchema,
   updateExitWeightSchema,
+  reviewEntrySchema,
+  flagEntrySchema,
 } from '../validations/entry.schema';
 import { verifyToken } from '../middlewares/auth';
 import { allowRoles } from '../middlewares/roleGuard';
@@ -17,8 +19,8 @@ const router = Router();
 // Apply authentication to all routes
 router.use(verifyToken);
 
-// Apply role-based access control
-router.use(allowRoles('admin', 'supervisor'));
+// Apply role-based access control for read/update routes
+// Create and exit weight should be allowed for operators too; others restricted
 
 /**
  * @swagger
@@ -92,7 +94,12 @@ router.use(allowRoles('admin', 'supervisor'));
  *       404:
  *         description: Not found - vendor, vehicle, or plant not found
  */
-router.post('/', validate(createEntrySchema), EntryController.createEntry);
+router.post(
+  '/',
+  allowRoles('admin', 'supervisor', 'operator'),
+  validate(createEntrySchema),
+  EntryController.createEntry,
+);
 
 /**
  * @swagger
@@ -167,7 +174,12 @@ router.post('/', validate(createEntrySchema), EntryController.createEntry);
  *       403:
  *         description: Forbidden - admin/supervisor access required
  */
-router.get('/', validate(getEntriesSchema), EntryController.getEntries);
+router.get(
+  '/',
+  allowRoles('admin', 'supervisor', 'operator'),
+  validate(getEntriesSchema),
+  EntryController.getEntries,
+);
 
 /**
  * @swagger
@@ -198,7 +210,12 @@ router.get('/', validate(getEntriesSchema), EntryController.getEntries);
  *       404:
  *         description: Entry not found
  */
-router.get('/:id', validate(getEntrySchema), EntryController.getEntryById);
+router.get(
+  '/:id',
+  allowRoles('admin', 'supervisor', 'operator'),
+  validate(getEntrySchema),
+  EntryController.getEntryById,
+);
 
 /**
  * @swagger
@@ -262,7 +279,12 @@ router.get('/:id', validate(getEntrySchema), EntryController.getEntryById);
  *       404:
  *         description: Entry not found
  */
-router.put('/:id', validate(updateEntrySchema), EntryController.updateEntry);
+router.put(
+  '/:id',
+  allowRoles('admin', 'supervisor'),
+  validate(updateEntrySchema),
+  EntryController.updateEntry,
+);
 
 /**
  * @swagger
@@ -293,7 +315,12 @@ router.put('/:id', validate(updateEntrySchema), EntryController.updateEntry);
  *       404:
  *         description: Entry not found
  */
-router.delete('/:id', validate(deleteEntrySchema), EntryController.deleteEntry);
+router.delete(
+  '/:id',
+  allowRoles('admin', 'supervisor'),
+  validate(deleteEntrySchema),
+  EntryController.deleteEntry,
+);
 
 /**
  * @swagger
@@ -313,6 +340,25 @@ router.delete('/:id', validate(deleteEntrySchema), EntryController.deleteEntry);
  *       200:
  *         description: Exit weight updated
  */
-router.patch('/:id/exit', validate(updateExitWeightSchema), EntryController.updateExitWeight);
+router.patch(
+  '/:id/exit',
+  allowRoles('admin', 'supervisor', 'operator'),
+  validate(updateExitWeightSchema),
+  EntryController.updateExitWeight,
+);
+
+// Review and flag endpoints (supervisor/admin only)
+router.patch(
+  '/:id/review',
+  allowRoles('admin', 'supervisor'),
+  validate(reviewEntrySchema),
+  EntryController.reviewEntry,
+);
+router.patch(
+  '/:id/flag',
+  allowRoles('admin', 'supervisor'),
+  validate(flagEntrySchema),
+  EntryController.flagEntry,
+);
 
 export default router;

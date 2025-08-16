@@ -16,6 +16,9 @@ export const createInvoiceSchema = z.object({
       .array(z.string().min(1, 'Entry ID is required'))
       .min(1, 'At least one entry is required')
       .max(100, 'Too many entries'),
+    materialRates: z
+      .record(z.string(), z.number().positive('Rate must be positive'))
+      .refine((obj) => Object.keys(obj).length > 0, 'At least one material rate is required'),
     invoiceDate: dateStringToDate.optional().default(() => new Date()),
     dueDate: dateStringToDate.optional(),
   }),

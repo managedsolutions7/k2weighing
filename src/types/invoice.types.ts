@@ -6,6 +6,7 @@ export interface IInvoice {
   vendor: mongoose.Types.ObjectId;
   plant: mongoose.Types.ObjectId;
   entries: mongoose.Types.ObjectId[];
+  materialRates: Map<string, number>;
   totalQuantity: number;
   totalAmount: number;
   invoiceDate: Date;
@@ -22,6 +23,7 @@ export interface CreateInvoiceRequest {
   vendor: string;
   plant: string;
   entries: string[];
+  materialRates: Record<string, number>; // key: materialTypeId, value: rate
   invoiceDate?: string;
   dueDate?: string;
 }
@@ -53,8 +55,8 @@ export interface InvoiceWithRelations {
     _id: mongoose.Types.ObjectId;
     entryType: string;
     quantity: number;
-    rate: number;
-    totalAmount: number;
+    rate?: number;
+    totalAmount?: number;
     entryDate: Date;
     vehicle: {
       _id: mongoose.Types.ObjectId;
@@ -62,6 +64,7 @@ export interface InvoiceWithRelations {
       driverName: string;
     };
   }>;
+  materialRates: Record<string, number>;
   totalQuantity: number;
   totalAmount: number;
   invoiceDate: Date;

@@ -50,9 +50,25 @@ export class InvoiceService {
         throw new CustomError('Some entries not found or do not match vendor/plant', 404);
       }
 
-      // Calculate totals
-      const totalQuantity = entries.reduce((sum, entry) => sum + entry.quantity, 0);
-      const totalAmount = entries.reduce((sum, entry) => sum + entry.totalAmount, 0);
+      // Ensure materialRates are provided for all material types present in entries
+      const materialIds = new Set<string>();
+      for (const e of entries as any[]) {
+        if (e.materialType) materialIds.add(String(e.materialType));
+      }
+      for (const mid of materialIds) {
+        if (!invoiceData.materialRates || typeof invoiceData.materialRates[mid] !== 'number') {
+          throw new CustomError(`Missing rate for materialType ${mid}`, 400);
+        }
+      }
+
+      // Calculate totals using invoice material rates
+      const totalQuantity = entries.reduce((sum, entry: any) => sum + (entry.quantity || 0), 0);
+      let totalAmount = 0;
+      for (const e of entries as any[]) {
+        const materialId = e.materialType ? String(e.materialType) : undefined;
+        const rate = materialId ? invoiceData.materialRates[materialId] : 0;
+        totalAmount += (e.quantity || 0) * (rate || 0);
+      }
 
       const invoice = new Invoice({
         vendor: invoiceData.vendor,
@@ -60,6 +76,7 @@ export class InvoiceService {
         entries: invoiceData.entries,
         totalQuantity,
         totalAmount,
+        materialRates: invoiceData.materialRates,
         invoiceDate: invoiceData.invoiceDate ? new Date(invoiceData.invoiceDate) : new Date(),
         dueDate: invoiceData.dueDate ? new Date(invoiceData.dueDate) : undefined,
         createdBy: userId,

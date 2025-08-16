@@ -54,7 +54,7 @@ export class AuthService {
       }
 
       // Generate tokens
-      const token = signAccessToken(user._id.toString(), user.role);
+      const token = signAccessToken(user._id.toString(), user.role, user.plantId?.toString());
       const refreshToken = signRefreshToken(user._id.toString());
 
       logger.info(`User logged in successfully: ${username}`);
@@ -192,7 +192,7 @@ export class AuthService {
    */
   static async refreshToken(req: AuthRequest): Promise<{ token: string; refreshToken: string }> {
     const { id, role } = req.user!;
-    const token = signAccessToken(id, role);
+    const token = signAccessToken(id, role, (req.user as any)?.plantId);
     const refreshToken = signRefreshToken(id);
     logger.info(`Token refreshed for user: ${id}`);
     return { token, refreshToken };

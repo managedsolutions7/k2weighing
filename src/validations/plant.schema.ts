@@ -42,3 +42,17 @@ export const deletePlantSchema = z.object({
     id: z.string().min(1, 'Plant ID is required'),
   }),
 });
+
+export const getPlantsSchema = z.object({
+  query: z.object({
+    isActive: z
+      .string()
+      .optional()
+      .transform((val) => {
+        if (val === undefined) return undefined;
+        if (val === 'true') return true;
+        if (val === 'false') return false;
+        throw new Error('isActive must be "true" or "false"');
+      }),
+  }),
+});

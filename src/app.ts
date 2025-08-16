@@ -9,6 +9,8 @@ import vendorRoutes from './routes/vendor.routes';
 import entryRoutes from './routes/entry.routes';
 import invoiceRoutes from './routes/invoice.routes';
 import reportRoutes from './routes/report.routes';
+import dashboardRoutes from './routes/dashboard.routes';
+import materialRoutes from './routes/material.routes';
 import { zodErrorHandler } from './middlewares/zodErrorHandler';
 import errorHandler from '@middlewares/errorHandler';
 import { notFoundHandler } from '@middlewares/notFoundHandler';
@@ -35,6 +37,8 @@ app.use('/api/vendors', vendorRoutes);
 app.use('/api/entries', entryRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/materials', materialRoutes);
 
 app.use(notFoundHandler);
 app.use(zodErrorHandler);

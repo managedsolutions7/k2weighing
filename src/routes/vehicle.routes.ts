@@ -6,6 +6,7 @@ import {
   updateVehicleSchema,
   getVehicleSchema,
   deleteVehicleSchema,
+  getVehiclesSchema,
 } from '../validations/vehicle.schema';
 import { verifyToken } from '../middlewares/auth';
 import { allowRoles } from '../middlewares/roleGuard';
@@ -15,8 +16,7 @@ const router = Router();
 // Apply authentication to all routes
 router.use(verifyToken);
 
-// Apply role-based access control
-router.use(allowRoles('admin', 'supervisor'));
+// Keep per-route guards to allow operators to read but restrict writes
 
 /**
  * @swagger
@@ -65,7 +65,12 @@ router.use(allowRoles('admin', 'supervisor'));
  *       401:
  *         description: Unauthorized
  */
-router.post('/', validate(createVehicleSchema), VehicleController.createVehicle);
+router.post(
+  '/',
+  allowRoles('admin', 'supervisor'),
+  validate(createVehicleSchema),
+  VehicleController.createVehicle,
+);
 
 /**
  * @swagger
@@ -93,7 +98,12 @@ router.post('/', validate(createVehicleSchema), VehicleController.createVehicle)
  *       401:
  *         description: Unauthorized
  */
-router.get('/', VehicleController.getVehicles);
+router.get(
+  '/',
+  allowRoles('admin', 'supervisor', 'operator'),
+  validate(getVehiclesSchema),
+  VehicleController.getVehicles,
+);
 
 /**
  * @swagger
@@ -118,7 +128,12 @@ router.get('/', VehicleController.getVehicles);
  *       401:
  *         description: Unauthorized
  */
-router.get('/:id', validate(getVehicleSchema), VehicleController.getVehicleById);
+router.get(
+  '/:id',
+  allowRoles('admin', 'supervisor', 'operator'),
+  validate(getVehicleSchema),
+  VehicleController.getVehicleById,
+);
 
 /**
  * @swagger
@@ -165,7 +180,12 @@ router.get('/:id', validate(getVehicleSchema), VehicleController.getVehicleById)
  *       401:
  *         description: Unauthorized
  */
-router.put('/:id', validate(updateVehicleSchema), VehicleController.updateVehicle);
+router.put(
+  '/:id',
+  allowRoles('admin', 'supervisor'),
+  validate(updateVehicleSchema),
+  VehicleController.updateVehicle,
+);
 
 /**
  * @swagger
@@ -190,6 +210,11 @@ router.put('/:id', validate(updateVehicleSchema), VehicleController.updateVehicl
  *       401:
  *         description: Unauthorized
  */
-router.delete('/:id', validate(deleteVehicleSchema), VehicleController.deleteVehicle);
+router.delete(
+  '/:id',
+  allowRoles('admin', 'supervisor'),
+  validate(deleteVehicleSchema),
+  VehicleController.deleteVehicle,
+);
 
 export default router;
