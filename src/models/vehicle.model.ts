@@ -1,5 +1,6 @@
 import { IVehicle } from '../types/vehicle.types';
 import mongoose, { Schema } from 'mongoose';
+import Counter from './counter.model';
 
 const vehicleSchema = new Schema<IVehicle>(
   {
@@ -23,10 +24,14 @@ vehicleSchema.pre('validate', async function (next) {
   try {
     if (this.isNew && !(this as any).vehicleCode) {
       const year = new Date().getFullYear();
-      const count = await mongoose.model('Vehicle').countDocuments({
-        vehicleCode: new RegExp(`^VEH-${year}-`),
-      });
-      (this as any).vehicleCode = `VEH-${year}-${String(count + 1).padStart(4, '0')}`;
+      const counterKey = `VEH-${year}`;
+      const ctr = await Counter.findOneAndUpdate(
+        { key: counterKey },
+        { $inc: { seq: 1 } },
+        { new: true, upsert: true },
+      );
+      const seq = ctr.seq;
+      (this as any).vehicleCode = `VEH-${year}-${String(seq).padStart(4, '0')}`;
     }
     next();
   } catch (err) {

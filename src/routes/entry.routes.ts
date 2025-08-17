@@ -347,6 +347,37 @@ router.patch(
   EntryController.updateExitWeight,
 );
 
+/**
+ * @swagger
+ * /api/entries/{id}/receipt:
+ *   get:
+ *     summary: Download entry receipt PDF
+ *     description: Returns a PDF receipt for the entry. Not available if varianceFlag is true.
+ *     tags: [Entries]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Entry ID
+ *     responses:
+ *       200:
+ *         description: PDF receipt
+ *       403:
+ *         description: Receipt not available due to variance failure or forbidden plant scope
+ *       404:
+ *         description: Entry not found
+ */
+router.get(
+  '/:id/receipt',
+  allowRoles('admin', 'supervisor', 'operator'),
+  validate(getEntrySchema),
+  EntryController.downloadReceipt,
+);
+
 // Review and flag endpoints (supervisor/admin only)
 router.patch(
   '/:id/review',

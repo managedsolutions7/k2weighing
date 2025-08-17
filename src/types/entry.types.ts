@@ -13,6 +13,7 @@ export interface IEntry {
   totalAmount: number;
   entryDate: Date;
   createdBy: mongoose.Types.ObjectId;
+  updatedBy?: mongoose.Types.ObjectId | null;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -36,6 +37,14 @@ export interface IEntry {
   weightPerBag?: number;
   packedWeight?: number;
   materialType?: mongoose.Types.ObjectId;
+  driverName?: string;
+  driverPhone?: string;
+  // Quality/deductions
+  moisture?: number;
+  dust?: number;
+  moistureWeight?: number;
+  dustWeight?: number;
+  finalWeight?: number;
 }
 
 export interface CreateEntryRequest {
@@ -53,6 +62,10 @@ export interface CreateEntryRequest {
   weightPerBag?: number;
   packedWeight?: number;
   materialType?: string;
+  driverName?: string;
+  driverPhone?: string;
+  moisture?: number;
+  dust?: number;
 }
 
 export interface UpdateEntryRequest {
@@ -66,6 +79,7 @@ export interface UpdateEntryRequest {
   isActive?: boolean;
   totalAmount?: number;
   exitWeight?: number;
+  entryWeight?: number;
   // review/flag updates
   isReviewed?: boolean;
   reviewedBy?: string | null;
@@ -73,6 +87,14 @@ export interface UpdateEntryRequest {
   reviewNotes?: string | null;
   flagged?: boolean;
   flagReason?: string | null;
+  driverName?: string;
+  driverPhone?: string;
+  moisture?: number;
+  dust?: number;
+  moistureWeight?: number;
+  dustWeight?: number;
+  finalWeight?: number;
+  varianceFlag?: boolean;
 }
 
 export interface EntryFilters {
@@ -116,6 +138,11 @@ export interface EntryWithRelations {
     name: string;
     username: string;
   };
+  updatedBy?: {
+    _id: mongoose.Types.ObjectId;
+    name: string;
+    username: string;
+  } | null;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;

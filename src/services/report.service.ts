@@ -49,22 +49,42 @@ export class ReportService {
       // Entry-based KPIs for counts and quantity
       const entryPipeline: any[] = [
         { $match: entryFilter },
+        // Compute a robust quantity: prefer exactWeight, then quantity, then expectedWeight
+        {
+          $addFields: {
+            computedQty: {
+              $cond: [
+                { $ne: ['$exactWeight', null] },
+                '$exactWeight',
+                {
+                  $cond: [
+                    { $gt: ['$quantity', 0] },
+                    '$quantity',
+                    { $ifNull: ['$expectedWeight', 0] },
+                  ],
+                },
+              ],
+            },
+          },
+        },
         {
           $group: {
             _id: null,
             totalEntries: { $sum: 1 },
-            totalQuantity: { $sum: '$quantity' },
+            totalQuantity: { $sum: '$computedQty' },
             purchaseEntries: {
               $sum: { $cond: [{ $eq: ['$entryType', 'purchase'] }, 1, 0] },
             },
             purchaseQuantity: {
-              $sum: { $cond: [{ $eq: ['$entryType', 'purchase'] }, '$quantity', 0] },
+              $sum: {
+                $cond: [{ $eq: ['$entryType', 'purchase'] }, '$computedQty', 0],
+              },
             },
             saleEntries: {
               $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, 1, 0] },
             },
             saleQuantity: {
-              $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, '$quantity', 0] },
+              $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, '$computedQty', 0] },
             },
           },
         },

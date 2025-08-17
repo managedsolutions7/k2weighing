@@ -14,11 +14,16 @@ export const createVehicleSchema = z.object({
       .positive('Tare weight must be positive')
       .max(100000, 'Tare too high')
       .optional(),
-    driverName: z.string().min(1, ValidationMessages.REQUIRED).max(100, 'Driver name too long'),
+    driverName: z
+      .string()
+      .min(1, ValidationMessages.REQUIRED)
+      .max(100, 'Driver name too long')
+      .optional(),
     driverPhone: z
       .string()
       .min(10, ValidationMessages.INVALID_PHONE)
-      .max(15, 'Phone number too long'),
+      .max(15, 'Phone number too long')
+      .optional(),
   }),
 });
 

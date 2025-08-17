@@ -564,4 +564,46 @@ export class EntryController {
       throw error;
     }
   }
+
+  /**
+   * @swagger
+   * /api/entries/{id}/receipt:
+   *   get:
+   *     summary: Download entry receipt PDF
+   *     description: Returns a PDF receipt for the entry. Not available if varianceFlag is true.
+   *     tags: [Entries]
+   *     security:
+   *       - bearerAuth: []
+   *     parameters:
+   *       - in: path
+   *         name: id
+   *         required: true
+   *         schema:
+   *           type: string
+   *         description: Entry ID
+   *     responses:
+   *       200:
+   *         description: PDF receipt
+   *         content:
+   *           application/pdf:
+   *             schema:
+   *               type: string
+   *               format: binary
+   *       403:
+   *         description: Receipt not available due to variance failure or forbidden plant scope
+   *       404:
+   *         description: Entry not found
+   */
+  static async downloadReceipt(req: Request, res: Response): Promise<void> {
+    try {
+      const { filename, buffer } = await EntryService.generateReceiptPdf(req);
+      res.setHeader('Content-Type', 'application/pdf');
+      // Inline display; change to attachment for forced download
+      res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+      res.status(200).send(buffer);
+    } catch (error) {
+      logger.error('Entry controller - downloadReceipt error:', error);
+      throw error;
+    }
+  }
 }

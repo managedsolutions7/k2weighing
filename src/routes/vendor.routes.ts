@@ -76,12 +76,7 @@ router.use(allowRoles('admin', 'supervisor', 'operator'));
  *       401:
  *         description: Unauthorized
  */
-router.post(
-  '/',
-  allowRoles('admin', 'supervisor'),
-  validate(createVendorSchema),
-  VendorController.createVendor,
-);
+router.post('/', allowRoles('admin'), validate(createVendorSchema), VendorController.createVendor);
 
 /**
  * @swagger
@@ -190,7 +185,7 @@ router.get('/:id', validate(getVendorSchema), VendorController.getVendorById);
  */
 router.put(
   '/:id',
-  allowRoles('admin', 'supervisor'),
+  allowRoles('admin'),
   validate(updateVendorSchema),
   VendorController.updateVendor,
 );
@@ -220,7 +215,7 @@ router.put(
  */
 router.delete(
   '/:id',
-  allowRoles('admin', 'supervisor'),
+  allowRoles('admin'),
   validate(deleteVendorSchema),
   VendorController.deleteVendor,
 );

@@ -1,5 +1,6 @@
 import { IEntry } from '../types/entry.types';
 import mongoose, { Schema } from 'mongoose';
+import Counter from './counter.model';
 
 const entrySchema = new Schema<IEntry>(
   {
@@ -38,11 +39,19 @@ const entrySchema = new Schema<IEntry>(
     expectedWeight: { type: Number, required: false },
     exactWeight: { type: Number, required: false },
     varianceFlag: { type: Boolean, required: false, default: null },
+    // Quality deductions (purchase exit only)
+    moisture: { type: Number, required: false, min: 0, max: 100 },
+    dust: { type: Number, required: false, min: 0, max: 100 },
+    moistureWeight: { type: Number, required: false, min: 0 },
+    dustWeight: { type: Number, required: false, min: 0 },
+    finalWeight: { type: Number, required: false, min: 0 },
     rate: {
       type: Number,
       required: false,
       min: 0,
     },
+    driverName: { type: String, required: false },
+    driverPhone: { type: String, required: false },
     totalAmount: {
       type: Number,
       required: false,
@@ -59,6 +68,7 @@ const entrySchema = new Schema<IEntry>(
       ref: 'User',
       required: true,
     },
+    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false },
     isActive: {
       type: Boolean,
       default: true,
@@ -111,10 +121,14 @@ entrySchema.pre('validate', async function (next) {
   try {
     if (this.isNew && !this.entryNumber) {
       const year = new Date().getFullYear();
-      const count = await mongoose.model('Entry').countDocuments({
-        entryNumber: new RegExp(`^ENT-${year}-`),
-      });
-      this.entryNumber = `ENT-${year}-${String(count + 1).padStart(4, '0')}`;
+      const counterKey = `ENT-${year}`;
+      const ctr = await Counter.findOneAndUpdate(
+        { key: counterKey },
+        { $inc: { seq: 1 } },
+        { new: true, upsert: true },
+      );
+      const seq = ctr.seq;
+      this.entryNumber = `ENT-${year}-${String(seq).padStart(7, '0')}`;
     }
     next();
   } catch (err) {

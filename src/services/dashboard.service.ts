@@ -1,12 +1,11 @@
 import { Request } from 'express';
+import mongoose from 'mongoose';
 import Entry from '@models/entry.model';
 import Invoice from '@models/invoice.model';
 import Vendor from '@models/vendor.model';
 import Plant from '@models/plant.model';
 import { CacheService } from './cache.service';
 import { serializeFilters } from '@constants/cache.constants';
-
-type Range = { startDate?: string | Date; endDate?: string | Date };
 
 export class DashboardService {
   static async getAdminDashboard(req: Request) {
@@ -187,8 +186,9 @@ export class DashboardService {
       recentInvoicesLimit = '10',
     } = req.query as any;
     const plantId = (req as any).user?.plantId;
+    const plantObjId = plantId ? new mongoose.Types.ObjectId(plantId) : undefined;
 
-    const filter: any = { plant: plantId };
+    const filter: any = plantObjId ? { plant: plantObjId } : {};
     if (startDate || endDate) {
       filter.entryDate = {};
       if (startDate) filter.entryDate.$gte = new Date(startDate as string);
@@ -204,91 +204,105 @@ export class DashboardService {
     });
     const cacheKey = `dashboard:supervisor:${filterString}`;
 
-    return CacheService.getOrSet(cacheKey, 300, async () => {
-      const [totals, byType] = await Promise.all([
-        Entry.aggregate([
-          { $match: { isActive: true, ...filter } },
-          {
-            $group: { _id: null, totalEntries: { $sum: 1 }, totalQuantity: { $sum: '$quantity' } },
+    return CacheService.getOrSet(cacheKey, 180, async () => {
+      // Use robust quantity (exactWeight -> quantity -> expectedWeight)
+      const matchStage = { isActive: true, ...filter } as any;
+      const totalsAgg = await Entry.aggregate([
+        { $match: matchStage },
+        {
+          $addFields: {
+            computedQty: {
+              $cond: [
+                { $ne: ['$exactWeight', null] },
+                '$exactWeight',
+                {
+                  $cond: [
+                    { $gt: ['$quantity', 0] },
+                    '$quantity',
+                    { $ifNull: ['$expectedWeight', 0] },
+                  ],
+                },
+              ],
+            },
           },
-        ]),
-        Entry.aggregate([
-          { $match: { isActive: true, ...filter } },
-          { $group: { _id: '$entryType', entries: { $sum: 1 }, quantity: { $sum: '$quantity' } } },
-        ]),
+        },
+        {
+          $group: {
+            _id: null,
+            totalEntries: { $sum: 1 },
+            totalQuantity: { $sum: '$computedQty' },
+            purchaseEntries: { $sum: { $cond: [{ $eq: ['$entryType', 'purchase'] }, 1, 0] } },
+            purchaseQuantity: {
+              $sum: { $cond: [{ $eq: ['$entryType', 'purchase'] }, '$computedQty', 0] },
+            },
+            saleEntries: { $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, 1, 0] } },
+            saleQuantity: { $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, '$computedQty', 0] } },
+          },
+        },
+      ]);
+
+      const byTypeAgg = await Entry.aggregate([
+        { $match: matchStage },
+        {
+          $addFields: {
+            computedQty: {
+              $cond: [
+                { $ne: ['$exactWeight', null] },
+                '$exactWeight',
+                {
+                  $cond: [
+                    { $gt: ['$quantity', 0] },
+                    '$quantity',
+                    { $ifNull: ['$expectedWeight', 0] },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        { $group: { _id: '$entryType', entries: { $sum: 1 }, quantity: { $sum: '$computedQty' } } },
       ]);
 
       const byTypeMap: any = {
-        purchase: { entries: 0, quantity: 0, amount: 0 },
-        sale: { entries: 0, quantity: 0, amount: 0 },
+        purchase: { entries: 0, quantity: 0 },
+        sale: { entries: 0, quantity: 0 },
       };
-      for (const item of byType)
-        byTypeMap[item._id] = {
-          entries: item.entries,
-          quantity: item.quantity,
-          amount: item.amount,
-        };
+      for (const item of byTypeAgg) {
+        byTypeMap[item._id] = { entries: item.entries, quantity: item.quantity };
+      }
 
-      const [recentEntries, recentInvoices] = await Promise.all([
+      const [recentEntriesRaw, recentInvoices] = await Promise.all([
         Entry.find({ isActive: true, ...filter })
           .populate('vendor', 'name code')
           .populate('vehicle', 'vehicleNumber driverName')
+          .populate('plant', 'name code')
           .sort({ createdAt: -1 })
-          .limit(Number(recentEntriesLimit) || 10),
-        Invoice.find({ isActive: true, plant: plantId })
+          .limit(Number(recentEntriesLimit) || 10)
+          .lean(),
+        Invoice.find({ isActive: true, plant: plantObjId })
           .populate('vendor', 'name code')
           .sort({ createdAt: -1 })
           .limit(Number(recentInvoicesLimit) || 10),
       ]);
 
-      // Compute amounts via invoices for this plant
-      const amountAgg = await Invoice.aggregate([
-        { $match: { plant: plantId } },
-        {
-          $lookup: { from: 'entries', localField: 'entries', foreignField: '_id', as: 'entryDocs' },
-        },
-        { $unwind: '$entryDocs' },
-        { $match: { 'entryDocs.plant': plantId } },
-        {
-          $addFields: {
-            materialKey: {
-              $cond: [
-                { $ne: ['$entryDocs.materialType', null] },
-                { $toString: '$entryDocs.materialType' },
-                null,
-              ],
-            },
-          },
-        },
-        {
-          $addFields: {
-            rate: {
-              $cond: [
-                { $ne: ['$materialKey', null] },
-                { $ifNull: [{ $getField: { input: '$materialRates', field: '$materialKey' } }, 0] },
-                0,
-              ],
-            },
-          },
-        },
-        {
-          $addFields: {
-            lineAmount: { $multiply: [{ $ifNull: ['$entryDocs.quantity', 0] }, '$rate'] },
-          },
-        },
-        { $group: { _id: '$entryDocs.entryType', amount: { $sum: '$lineAmount' } } },
+      const recentEntries = recentEntriesRaw.map((e: any) => ({
+        ...e,
+        entryDate: e.entryDate ? new Date(e.entryDate).toISOString() : null,
+        createdAt: e.createdAt ? new Date(e.createdAt).toISOString() : null,
+        updatedAt: e.updatedAt ? new Date(e.updatedAt).toISOString() : null,
+      }));
+
+      const t = totalsAgg[0] || { totalEntries: 0, totalQuantity: 0 };
+      // Counters
+      const [pendingReviews, flagged] = await Promise.all([
+        Entry.countDocuments({ isActive: true, ...filter, isReviewed: false }),
+        Entry.countDocuments({ isActive: true, ...filter, flagged: true }),
       ]);
-      const t = totals[0] || { totalEntries: 0, totalQuantity: 0 };
-      const byTypeAmount: Record<string, number> = { purchase: 0, sale: 0 };
-      for (const a of amountAgg) byTypeAmount[a._id] = a.amount;
-      const totalAmount = byTypeAmount.purchase + byTypeAmount.sale;
-      const averageRate = t.totalQuantity > 0 ? totalAmount / t.totalQuantity : 0;
+
       return {
-        totals: { ...t, totalAmount, averageRate },
-        byType: {
-          purchase: { ...byTypeMap.purchase, amount: byTypeAmount.purchase },
-          sale: { ...byTypeMap.sale, amount: byTypeAmount.sale },
-        },
+        totals: { totalEntries: t.totalEntries || 0, totalQuantity: t.totalQuantity || 0 },
+        counters: { pendingReviews, flagged },
+        byType: byTypeMap,
         recentEntries,
         recentInvoices,
       };
@@ -300,13 +314,21 @@ export class DashboardService {
     const userId = (req as any).user?.id;
     const plantId = (req as any).user?.plantId;
 
+    // Enforce plant scope from JWT for operator
     const filter: any = { createdBy: userId };
     if (plantId) filter.plant = plantId;
-    if (startDate || endDate) {
-      filter.entryDate = {};
-      if (startDate) filter.entryDate.$gte = new Date(startDate as string);
-      if (endDate) filter.entryDate.$lte = new Date(endDate as string);
+
+    // Default to last 24h if no dates provided
+    const now = new Date();
+    let from: Date, to: Date;
+    if (startDate && endDate) {
+      from = new Date(startDate as string);
+      to = new Date(endDate as string);
+    } else {
+      to = now;
+      from = new Date(to.getTime() - 24 * 60 * 60 * 1000);
     }
+    filter.entryDate = { $gte: from, $lte: to };
 
     const filterString = serializeFilters({
       startDate,
@@ -334,15 +356,28 @@ export class DashboardService {
         .populate('vehicle', 'vehicleNumber driverName')
         .populate('plant', 'name code')
         .sort({ createdAt: -1 })
-        .limit(Number(recentEntriesLimit) || 20);
+        .limit(Number(recentEntriesLimit) || 20)
+        .lean();
+
+      // Ensure dates are ISO strings
+      const formattedRecentEntries = recentEntries.map((entry) => ({
+        ...entry,
+        entryDate: entry.entryDate ? new Date(entry.entryDate).toISOString() : null,
+        createdAt: entry.createdAt ? new Date(entry.createdAt).toISOString() : null,
+        updatedAt: entry.updatedAt ? new Date(entry.updatedAt).toISOString() : null,
+      }));
 
       return {
-        totals: totals[0] || { totalEntries: 0, totalQuantity: 0 },
+        totals: {
+          totalEntries: totals[0]?.totalEntries || 0,
+          totalQuantity: totals[0]?.totalQuantity || 0,
+          // Remove totalAmount as requested
+        },
         counters: {
           pendingReviews,
           flagged,
         },
-        recentEntries,
+        recentEntries: formattedRecentEntries,
       };
     });
   }

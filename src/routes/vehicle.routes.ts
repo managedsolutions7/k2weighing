@@ -67,7 +67,7 @@ router.use(verifyToken);
  */
 router.post(
   '/',
-  allowRoles('admin', 'supervisor'),
+  allowRoles('admin'),
   validate(createVehicleSchema),
   VehicleController.createVehicle,
 );
@@ -182,7 +182,7 @@ router.get(
  */
 router.put(
   '/:id',
-  allowRoles('admin', 'supervisor'),
+  allowRoles('admin'),
   validate(updateVehicleSchema),
   VehicleController.updateVehicle,
 );
@@ -212,7 +212,7 @@ router.put(
  */
 router.delete(
   '/:id',
-  allowRoles('admin', 'supervisor'),
+  allowRoles('admin'),
   validate(deleteVehicleSchema),
   VehicleController.deleteVehicle,
 );

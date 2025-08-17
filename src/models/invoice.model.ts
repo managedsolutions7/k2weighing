@@ -1,5 +1,6 @@
 import { IInvoice } from '../types/invoice.types';
 import mongoose, { Schema } from 'mongoose';
+import Counter from './counter.model';
 
 const invoiceSchema = new Schema<IInvoice>(
   {
@@ -82,10 +83,14 @@ invoiceSchema.pre('validate', async function (next) {
   try {
     if (this.isNew && !this.invoiceNumber) {
       const year = new Date().getFullYear();
-      const count = await mongoose.model('Invoice').countDocuments({
-        invoiceNumber: new RegExp(`^INV-${year}-`),
-      });
-      this.invoiceNumber = `INV-${year}-${String(count + 1).padStart(4, '0')}`;
+      const counterKey = `INV-${year}`;
+      const ctr = await Counter.findOneAndUpdate(
+        { key: counterKey },
+        { $inc: { seq: 1 } },
+        { new: true, upsert: true },
+      );
+      const seq = ctr.seq;
+      this.invoiceNumber = `INV-${year}-${String(seq).padStart(7, '0')}`;
     }
     next();
   } catch (err) {

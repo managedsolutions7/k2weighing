@@ -23,6 +23,15 @@ export const createEntrySchema = z.object({
     packedWeight: z.number().positive().optional(),
     // New purchase field
     materialType: z.string().optional(),
+    // Optional at create; mainly applied on exit for purchase
+    moisture: z.number().min(0).max(100).optional(),
+    dust: z.number().min(0).max(100).optional(),
+    driverName: z.string().min(1, 'Driver name is required').max(100, 'Driver name too long'),
+    driverPhone: z
+      .string()
+      .min(10, 'Invalid driver phone')
+      .max(15, 'Driver phone too long')
+      .optional(),
   }),
 });
 
@@ -49,6 +58,12 @@ export const updateEntrySchema = z.object({
     reviewNotes: z.string().max(1000).nullable().optional(),
     flagged: z.boolean().optional(),
     flagReason: z.string().max(500).nullable().optional(),
+    driverName: z.string().max(100).optional(),
+    driverPhone: z
+      .string()
+      .min(10, 'Invalid driver phone')
+      .max(15, 'Driver phone too long')
+      .optional(),
   }),
 });
 
@@ -76,6 +91,9 @@ export const updateExitWeightSchema = z.object({
     palletteType: z.enum(['loose', 'packed']).optional(),
     noOfBags: z.number().positive().optional(),
     weightPerBag: z.number().positive().optional(),
+    // Purchase quality inputs on exit
+    moisture: z.number().min(0).max(100).optional(),
+    dust: z.number().min(0).max(100).optional(),
   }),
 });
 

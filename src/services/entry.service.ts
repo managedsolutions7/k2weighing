@@ -1,4 +1,5 @@
 import { Request } from 'express';
+import PDFDocument from 'pdfkit';
 import mongoose from 'mongoose';
 import Entry from '../models/entry.model';
 import {
@@ -98,6 +99,13 @@ export class EntryService {
         if (entryData.entryType === 'purchase') {
           // For purchase, expected = loaded (entry) - tare
           expectedWeight = entryData.entryWeight - vehForWeight.tareWeight;
+          // Strict validation: for purchase, entry weight must be >= tare
+          if (entryData.entryWeight < vehForWeight.tareWeight) {
+            throw new CustomError(
+              'Invalid weights: for purchase, entryWeight must be greater than or equal to vehicle tareWeight',
+              400,
+            );
+          }
         } else {
           // For sale, expected depends on exitWeight which we do not have yet at creation
           expectedWeight = null;
@@ -120,6 +128,8 @@ export class EntryService {
         exactWeight,
         varianceFlag,
         manualWeight: Boolean(entryData.manualWeight),
+        driverName: entryData.driverName,
+        driverPhone: entryData.driverPhone,
         // Additional handling for sale packed weight will be handled in model pre-save
       });
 
@@ -141,14 +151,21 @@ export class EntryService {
 
   static async updateExitWeight(req: Request): Promise<IEntry> {
     const { id } = req.params;
-    const { exitWeight, palletteType, noOfBags, weightPerBag } = req.body as {
+    const { exitWeight, palletteType, noOfBags, weightPerBag, moisture, dust } = req.body as {
       exitWeight: number;
       palletteType?: 'loose' | 'packed';
       noOfBags?: number;
       weightPerBag?: number;
+      moisture?: number;
+      dust?: number;
     };
     const entry = await Entry.findById(id);
     if (!entry) throw new CustomError('Entry not found', 404);
+
+    // Enforce single exit weight update
+    if (entry.exitWeight != null) {
+      throw new CustomError('Exit weight already recorded', 409);
+    }
 
     const vehicle = await Vehicle.findById(entry.vehicle);
     if (!vehicle) throw new CustomError('Vehicle not found', 404);
@@ -201,12 +218,42 @@ export class EntryService {
       }
     }
 
+    // Validate relationships to prevent negative quantities
+    if (exactWeight != null && exactWeight < 0) {
+      if (entry.entryType === 'sale') {
+        throw new CustomError(
+          'Invalid weights: for sale, exitWeight must be greater than or equal to entryWeight',
+          400,
+        );
+      } else {
+        throw new CustomError(
+          'Invalid weights: for purchase, entryWeight must be greater than or equal to exitWeight',
+          400,
+        );
+      }
+    }
+
     let varianceFlag: boolean | null = null;
     if (expectedWeight != null && exactWeight != null) {
       varianceFlag = Math.abs(exactWeight - expectedWeight) > VARIANCE_TOLERANCE;
     }
 
     if (exactWeight != null) {
+      // Apply moisture/dust only for purchase entries
+      if (entry.entryType === 'purchase') {
+        const mPct =
+          typeof moisture === 'number' ? Math.max(0, Math.min(100, moisture)) : undefined;
+        const dPct = typeof dust === 'number' ? Math.max(0, Math.min(100, dust)) : undefined;
+        if (mPct !== undefined) (entry as any).moisture = mPct;
+        if (dPct !== undefined) (entry as any).dust = dPct;
+        const dustWeight = dPct !== undefined ? (exactWeight * dPct) / 100 : 0;
+        const moistureWeight = mPct !== undefined ? (exactWeight * mPct) / 100 : 0;
+        if (dPct !== undefined) (entry as any).dustWeight = dustWeight;
+        if (mPct !== undefined) (entry as any).moistureWeight = moistureWeight;
+        if (mPct !== undefined || dPct !== undefined) {
+          (entry as any).finalWeight = Math.max(0, exactWeight - (dustWeight + moistureWeight));
+        }
+      }
       entry.quantity = exactWeight;
       const rate = typeof (entry as any).rate === 'number' ? (entry as any).rate : 0;
       entry.totalAmount = Number(entry.quantity) * rate;
@@ -239,17 +286,22 @@ export class EntryService {
     const reviewerId = (req as any).user?.id;
     if (!reviewerId) throw new CustomError('User not authenticated', 401);
 
-    const updated = await Entry.findByIdAndUpdate(
-      id,
-      {
-        isReviewed: Boolean(isReviewed),
-        reviewedBy: reviewerId,
-        reviewedAt: new Date(),
-        reviewNotes: reviewNotes ?? null,
-      },
-      { new: true },
-    );
-    if (!updated) throw new CustomError('Entry not found', 404);
+    const entry = await Entry.findById(id);
+    if (!entry) throw new CustomError('Entry not found', 404);
+    if (entry.flagged) {
+      throw new CustomError('Cannot review a flagged entry', 400);
+    }
+    entry.isReviewed = Boolean(isReviewed);
+    if (entry.isReviewed) {
+      (entry as any).reviewedBy = reviewerId as any;
+      (entry as any).reviewedAt = new Date();
+    } else {
+      (entry as any).reviewedBy = null as any;
+      (entry as any).reviewedAt = null as any;
+    }
+    (entry as any).reviewNotes = reviewNotes ?? null;
+    (entry as any).updatedBy = reviewerId as any;
+    const updated = await entry.save();
     await (EntryService as unknown as IEntryServiceWithInvalidation).invalidateCachesOnMutation(id);
     return updated as any;
   }
@@ -260,12 +312,12 @@ export class EntryService {
   static async flagEntry(req: Request): Promise<IEntry> {
     const { id } = req.params;
     const { flagged, flagReason } = req.body as { flagged: boolean; flagReason?: string | null };
-    const updated = await Entry.findByIdAndUpdate(
-      id,
-      { flagged: Boolean(flagged), flagReason: flagReason ?? null },
-      { new: true },
-    );
-    if (!updated) throw new CustomError('Entry not found', 404);
+    const entry = await Entry.findById(id);
+    if (!entry) throw new CustomError('Entry not found', 404);
+    entry.flagged = Boolean(flagged);
+    entry.flagReason = entry.flagged ? (flagReason ?? null) : null;
+    (entry as any).updatedBy = (req as any).user?.id;
+    const updated = await entry.save();
     await (EntryService as unknown as IEntryServiceWithInvalidation).invalidateCachesOnMutation(id);
     return updated as any;
   }
@@ -342,20 +394,41 @@ export class EntryService {
         | { id: string; role: string; plantId?: string }
         | undefined;
       if (requester) {
-        // Operators: last 24h and createdBy self
+        const TWENTYFOUR_HRS = 24 * 60 * 60 * 1000;
+        const now = new Date();
+
+        // Operators: last 24h restriction and createdBy self, force plant scope
         if (requester.role === 'operator') {
-          const now = new Date();
-          const from = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+          // Force plant scope from JWT, ignore query plantId
+          if (requester.plantId) {
+            filter.plant = requester.plantId;
+          }
+
+          // Handle date range with 24h window restriction
+          let from: Date, to: Date;
+          if (startDate && endDate) {
+            from = new Date(startDate as string);
+            to = new Date(endDate as string);
+            // Clamp to 24h window if wider
+            if (to.getTime() - from.getTime() > TWENTYFOUR_HRS) {
+              from = new Date(to.getTime() - TWENTYFOUR_HRS);
+            }
+          } else {
+            // Default to last 24h
+            to = now;
+            from = new Date(to.getTime() - TWENTYFOUR_HRS);
+          }
+
           filter.createdBy = requester.id;
-          filter.entryDate = Object.assign(filter.entryDate || {}, { $gte: from });
+          filter.entryDate = { $gte: from, $lte: to };
         }
-        // Supervisors: restrict to plant unless explicitly providing a different plant (block)
-        if (requester.role === 'supervisor') {
-          // Prefer explicit plant query if matches supervisor plant; else force plant filter
-          const supervisorPlantId = (req as any).user?.plantId;
-          filter.plant = supervisorPlantId || filter.plant;
+        // Supervisors: force plant scope from JWT, ignore query plantId
+        else if (requester.role === 'supervisor') {
+          if (requester.plantId) {
+            filter.plant = requester.plantId;
+          }
         }
-        // Admin: no extra restrictions
+        // Admin: no extra restrictions, can use query plantId
       }
 
       const skip = (Number(page) - 1) * Number(limit);
@@ -468,26 +541,128 @@ export class EntryService {
         }
       }
 
-      // Recalculate total amount if quantity or rate is updated
-      if (updateData.quantity || updateData.rate) {
-        const entry = await Entry.findById(id);
-        if (!entry) {
-          throw new CustomError('Entry not found', 404);
-        }
+      // Load current entry
+      const entry = await Entry.findById(id);
+      if (!entry) throw new CustomError('Entry not found', 404);
 
-        const newQuantity = updateData.quantity ?? entry.quantity;
-        const newRate = updateData.rate ?? entry.rate ?? 0;
-        updateData.totalAmount = newQuantity * newRate;
+      // Reviewed entries cannot be updated
+      if (entry.isReviewed) {
+        throw new CustomError('Reviewed entry cannot be updated', 403);
       }
 
-      const updatedEntry = await Entry.findByIdAndUpdate(id, updateData, {
+      // Variance rule: if variance not raised, only allow explicit clearing (varianceFlag === false)
+      const wantsClearVariance =
+        Object.prototype.hasOwnProperty.call(updateData, 'varianceFlag') &&
+        (updateData as any).varianceFlag === false;
+      if (entry.varianceFlag !== true && !wantsClearVariance) {
+        throw new CustomError('Update not allowed: variance not raised', 403);
+      }
+
+      // Moisture/dust only for purchase
+      const hasMoistureOrDust =
+        Object.prototype.hasOwnProperty.call(updateData, 'moisture') ||
+        Object.prototype.hasOwnProperty.call(updateData, 'dust');
+      if (hasMoistureOrDust && entry.entryType !== 'purchase') {
+        throw new CustomError('moisture/dust can only be set for purchase entries', 400);
+      }
+
+      // Validate weights if both provided or combined with existing
+      const nextEntryWeight = (
+        Object.prototype.hasOwnProperty.call(updateData, 'entryWeight')
+          ? (updateData as any).entryWeight
+          : entry.entryWeight
+      ) as number | null | undefined;
+      const nextExitWeight = (
+        Object.prototype.hasOwnProperty.call(updateData, 'exitWeight')
+          ? (updateData as any).exitWeight
+          : entry.exitWeight
+      ) as number | null | undefined;
+      if (nextEntryWeight != null && nextExitWeight != null) {
+        if (entry.entryType === 'sale' && nextExitWeight < nextEntryWeight) {
+          throw new CustomError(
+            'Invalid weights: for sale, exitWeight must be greater than or equal to entryWeight',
+            400,
+          );
+        }
+        if (entry.entryType === 'purchase' && nextEntryWeight < nextExitWeight) {
+          throw new CustomError(
+            'Invalid weights: for purchase, entryWeight must be greater than or equal to exitWeight',
+            400,
+          );
+        }
+      }
+
+      // Assign only provided fields (diff-only)
+      const allowedKeys: Array<keyof UpdateEntryRequest> = [
+        'entryType',
+        'vendor',
+        'vehicle',
+        'plant',
+        'quantity',
+        'rate',
+        'entryDate',
+        'isActive',
+        'isReviewed',
+        'reviewedBy',
+        'reviewedAt',
+        'reviewNotes',
+        'flagged',
+        'flagReason',
+        'driverName',
+        'driverPhone',
+        'moisture',
+        'dust',
+        'exitWeight',
+        'entryWeight',
+        'varianceFlag',
+      ];
+      const updates: any = {};
+      for (const k of allowedKeys) {
+        if (Object.prototype.hasOwnProperty.call(updateData, k))
+          (updates as any)[k] = (updateData as any)[k];
+      }
+
+      // Recompute totals and purchase deductions if applicable
+      const effectiveExit = updates.exitWeight ?? entry.exitWeight;
+      const effectiveEntry = updates.entryWeight ?? entry.entryWeight;
+      let recomputedExact: number | null = entry.exactWeight ?? null;
+      if (effectiveExit != null && effectiveEntry != null) {
+        recomputedExact =
+          entry.entryType === 'sale'
+            ? effectiveExit - effectiveEntry
+            : effectiveEntry - effectiveExit;
+        if (recomputedExact < 0) recomputedExact = 0;
+        updates.exactWeight = recomputedExact;
+        updates.quantity = recomputedExact;
+      }
+
+      if (entry.entryType === 'purchase' && recomputedExact != null) {
+        const mPct = updates.moisture ?? entry.moisture;
+        const dPct = updates.dust ?? entry.dust;
+        if (typeof mPct === 'number')
+          updates.moistureWeight = (recomputedExact * Math.max(0, Math.min(100, mPct))) / 100;
+        if (typeof dPct === 'number')
+          updates.dustWeight = (recomputedExact * Math.max(0, Math.min(100, dPct))) / 100;
+        if (typeof mPct === 'number' || typeof dPct === 'number') {
+          const dw = updates.dustWeight ?? entry.dustWeight ?? 0;
+          const mw = updates.moistureWeight ?? entry.moistureWeight ?? 0;
+          updates.finalWeight = Math.max(0, recomputedExact - (dw + mw));
+        }
+      }
+
+      // totalAmount if quantity or rate updated/available
+      const nextQty = updates.quantity ?? entry.quantity;
+      const nextRate = updates.rate ?? entry.rate ?? 0;
+      updates.totalAmount = Number(nextQty) * Number(nextRate);
+
+      (updates as any).updatedBy = (req as any).user?.id;
+
+      const updatedEntry = await Entry.findByIdAndUpdate(id, updates, {
         new: true,
         runValidators: true,
       });
 
-      if (!updatedEntry) {
-        throw new CustomError('Entry not found', 404);
-      }
+      if (!updatedEntry) throw new CustomError('Entry not found', 404);
 
       logger.info(`Entry updated: ${id}`);
       await (EntryService as unknown as IEntryServiceWithInvalidation).invalidateCachesOnMutation(
@@ -522,6 +697,117 @@ export class EntryService {
       throw error;
     }
   }
+
+  /**
+   * Generate receipt PDF for an entry and return as buffer
+   */
+  static async generateReceiptPdf(req: Request): Promise<{ filename: string; buffer: Buffer }> {
+    const { id } = req.params;
+    const requester = (req as any).user as { role?: string; plantId?: string } | undefined;
+
+    const entry = await Entry.findById(id)
+      .populate('vendor', 'name code')
+      .populate('vehicle', 'vehicleNumber vehicleType')
+      .populate('plant', 'name code')
+      .lean();
+
+    if (!entry) {
+      throw new CustomError('Entry not found', 404);
+    }
+
+    // Enforce plant scope for operator/supervisor
+    if (requester && (requester.role === 'operator' || requester.role === 'supervisor')) {
+      if (
+        requester.plantId &&
+        String(entry.plant?._id || entry.plant) !== String(requester.plantId)
+      ) {
+        throw new CustomError('Forbidden: entry not in your plant', 403);
+      }
+    }
+
+    if (entry.varianceFlag === true) {
+      throw new CustomError('Receipt not available due to variance failure', 403);
+    }
+
+    // Build PDF in-memory
+    const doc = new PDFDocument({ margin: 50 });
+    const chunks: Buffer[] = [];
+    const filename = `${entry.entryNumber}-receipt.pdf`;
+
+    return await new Promise((resolve, reject) => {
+      doc.on('data', (chunk) => chunks.push(chunk as Buffer));
+      doc.on('end', () => {
+        resolve({ filename, buffer: Buffer.concat(chunks) });
+      });
+      doc.on('error', reject);
+
+      // Content
+      doc.fontSize(22).text('RECEIPT', { align: 'center' });
+      doc.moveDown();
+
+      doc.fontSize(12);
+      doc.text(`Entry Number: ${entry.entryNumber}`);
+      doc.text(`Entry Type: ${entry.entryType}`);
+      doc.text(`Date: ${new Date(entry.entryDate).toLocaleString()}`);
+      doc.moveDown();
+
+      doc.fontSize(14).text('VENDOR', { underline: true });
+      doc.fontSize(10);
+      if (entry.vendor && typeof entry.vendor === 'object') {
+        // @ts-expect-error - vendor is an object
+        doc.text(`Name: ${entry.vendor.name}`);
+        // @ts-expect-error - vendor is an object
+        doc.text(`Code: ${entry.vendor.code}`);
+      }
+      doc.moveDown();
+
+      doc.fontSize(14).text('PLANT', { underline: true });
+      doc.fontSize(10);
+      if (entry.plant && typeof entry.plant === 'object') {
+        // @ts-expect-error - plant is an object
+        doc.text(`Name: ${entry.plant.name}`);
+        // @ts-expect-error - plant is an object
+        doc.text(`Code: ${entry.plant.code}`);
+      }
+      doc.moveDown();
+
+      doc.fontSize(14).text('VEHICLE', { underline: true });
+      doc.fontSize(10);
+      if (entry.vehicle && typeof entry.vehicle === 'object') {
+        // @ts-expect-error - vehicle is an object
+        doc.text(`Vehicle Number: ${entry.vehicle.vehicleNumber}`);
+        // @ts-expect-error - vehicle is an object
+        doc.text(`Vehicle Type: ${entry.vehicle.vehicleType}`);
+      }
+      doc.text(`Driver Name: ${entry.driverName || '-'}`);
+      doc.text(`Driver Phone: ${entry.driverPhone || '-'}`);
+      doc.moveDown();
+
+      doc.fontSize(14).text('WEIGHTS', { underline: true });
+      doc.fontSize(10);
+      doc.text(`Entry Weight: ${entry.entryWeight ?? '-'}`);
+      doc.text(`Exit Weight: ${entry.exitWeight ?? '-'}`);
+      doc.text(`Expected Weight: ${entry.expectedWeight ?? '-'}`);
+      doc.text(`Exact Weight: ${entry.exactWeight ?? '-'}`);
+      // Quality
+      if (entry.entryType === 'purchase') {
+        doc.moveDown();
+        doc.fontSize(14).text('QUALITY (PURCHASE)', { underline: true });
+        doc.fontSize(10);
+        doc.text(`Moisture (%): ${entry.moisture ?? '-'}`);
+        doc.text(`Dust (%): ${entry.dust ?? '-'}`);
+        doc.text(`Moisture Weight: ${entry.moistureWeight ?? '-'}`);
+        doc.text(`Dust Weight: ${entry.dustWeight ?? '-'}`);
+        doc.text(`Final Weight: ${entry.finalWeight ?? '-'}`);
+      }
+      doc.moveDown(2);
+
+      doc.fontSize(10).text('Generated by Biofuel Management System', { align: 'center' });
+      doc.text(`Generated on: ${new Date().toLocaleString()}`, { align: 'center' });
+
+      doc.end();
+    });
+  }
 }
 
 // Helper invalidation for entries and reports dependent on entries
@@ -533,9 +819,11 @@ export type IEntryServiceWithInvalidation = typeof EntryService & {
 
 const entryServiceWithInvalidation: IEntryServiceWithInvalidation = Object.assign(EntryService, {
   async invalidateCachesOnMutation(id: string): Promise<void> {
-    await CacheService.delByPattern('entries:list:*');
+    // Include version prefix in patterns
+    await CacheService.delByPattern('v1:entries:list:*');
     await CacheService.del(ENTRY_BY_ID_KEY(id));
-    await CacheService.delByPattern('reports:*');
+    await CacheService.delByPattern('v1:reports:*');
+    await CacheService.delByPattern('v1:dashboard:*');
   },
 });
 

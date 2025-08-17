@@ -1,5 +1,6 @@
 import { IVendor } from '../types/vendor.types';
 import mongoose, { Schema } from 'mongoose';
+import Counter from './counter.model';
 
 const vendorSchema = new Schema<IVendor>(
   {
@@ -40,10 +41,14 @@ vendorSchema.pre('validate', async function (next) {
     }
     if (this.isNew && !this.vendorNumber) {
       const year = new Date().getFullYear();
-      const count = await mongoose.model('Vendor').countDocuments({
-        vendorNumber: new RegExp(`^VEN-${year}-`),
-      });
-      (this as any).vendorNumber = `VEN-${year}-${String(count + 1).padStart(4, '0')}`;
+      const counterKey = `VEN-${year}`;
+      const ctr = await Counter.findOneAndUpdate(
+        { key: counterKey },
+        { $inc: { seq: 1 } },
+        { new: true, upsert: true },
+      );
+      const seq = ctr.seq;
+      (this as any).vendorNumber = `VEN-${year}-${String(seq).padStart(4, '0')}`;
     }
     next();
   } catch (err) {
