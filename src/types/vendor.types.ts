@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 
-export interface IVendor extends Document {
+export interface IVendor {
   _id: mongoose.Types.ObjectId;
   vendorNumber: string;
   name: string;

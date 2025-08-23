@@ -61,12 +61,24 @@ export const timeSeriesReportSchema = z.object({
 
 export const exportReportSchema = z.object({
   query: z.object({
-    format: z.literal('csv').optional(),
+    format: z.enum(['csv', 'pdf', 'excel'] as const).optional(),
+    reportType: z.enum(['summary', 'detailed', 'vendors', 'plants'] as const).optional(),
     groupBy: z.enum(['vendor', 'plant'] as const).optional(),
     entryType: z.enum(['purchase', 'sale'] as const).optional(),
     vendor: z.string().optional(),
     plant: z.string().optional(),
     startDate: dateStringToDate.optional(),
     endDate: dateStringToDate.optional(),
+    includeCharts: z
+      .string()
+      .transform((val) => val === 'true')
+      .optional(),
+    includeSummary: z
+      .string()
+      .transform((val) => val === 'true')
+      .optional(),
+    dateFormat: z.string().optional(),
+    timezone: z.string().optional(),
+    filename: z.string().optional(),
   }),
 });

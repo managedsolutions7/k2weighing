@@ -7,10 +7,16 @@ const envSchema = z.object({
   DATABASE_URL: z.url(),
   REDIS_URL: z.url(),
   JWT_SECRET: z.string().min(10),
+  INVOICE_SIGNATURE_SECRET: z.string().min(32).optional(),
   CACHE_LOGGING: z
     .string()
     .optional()
     .transform((val) => (val ? val.toLowerCase() === 'true' : false)),
+  // S3 settings
+  AWS_REGION: z.string().optional(),
+  S3_UPLOADS_BUCKET: z.string().optional(),
+  S3_UPLOADS_PREFIX: z.string().optional(),
+  S3_KMS_KEY_ID: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

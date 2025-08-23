@@ -162,6 +162,160 @@ router.get('/', validate(getInvoicesSchema), InvoiceController.getInvoices);
 
 /**
  * @swagger
+ * /api/invoices/available-entries:
+ *   get:
+ *     summary: Get available entries for invoice generation
+ *     description: Retrieve entries that are available for invoice generation based on filters
+ *     tags: [Invoices]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: query
+ *         name: vendor
+ *         schema:
+ *           type: string
+ *         description: Filter by vendor ID
+ *         example: "507f1f77bcf86cd799439013"
+ *       - in: query
+ *         name: plant
+ *         schema:
+ *           type: string
+ *         description: Filter by plant ID
+ *         example: "507f1f77bcf86cd799439011"
+ *       - in: query
+ *         name: invoiceType
+ *         schema:
+ *           type: string
+ *           enum: [purchase, sale]
+ *         description: Filter by invoice type (entry type)
+ *         example: "purchase"
+ *       - in: query
+ *         name: startDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Filter by start date
+ *         example: "2025-01-01"
+ *       - in: query
+ *         name: endDate
+ *         schema:
+ *           type: string
+ *           format: date
+ *         description: Filter by end date
+ *         example: "2025-01-31"
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *         example: 1
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Number of items per page
+ *         example: 10
+ *     responses:
+ *       200:
+ *         description: Available entries retrieved successfully
+ *       400:
+ *         description: Bad request - invalid query parameters
+ *       401:
+ *         description: Unauthorized - authentication required
+ *       403:
+ *         description: Forbidden - admin/supervisor access required
+ */
+router.get('/available-entries', InvoiceController.getAvailableEntries);
+
+/**
+ * @swagger
+ * /api/invoices/generate-from-range:
+ *   post:
+ *     summary: Generate invoice from date range and filters
+ *     description: Generate a new invoice from entries within a specified date range and filters
+ *     tags: [Invoices]
+ *     security:
+ *       - bearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - vendor
+ *               - plant
+ *               - invoiceType
+ *               - startDate
+ *               - endDate
+ *             properties:
+ *               vendor:
+ *                 type: string
+ *                 description: Vendor ID
+ *                 example: "507f1f77bcf86cd799439013"
+ *               plant:
+ *                 type: string
+ *                 description: Plant ID
+ *                 example: "507f1f77bcf86cd799439011"
+ *               invoiceType:
+ *                 type: string
+ *                 enum: [purchase, sale]
+ *                 description: Type of invoice to generate
+ *                 example: "purchase"
+ *               startDate:
+ *                 type: string
+ *                 format: date
+ *                 description: Start date for entry selection
+ *                 example: "2025-01-01"
+ *               endDate:
+ *                 type: string
+ *                 format: date
+ *                 description: End date for entry selection
+ *                 example: "2025-01-31"
+ *               materialRates:
+ *                 type: object
+ *                 description: Material rates for purchase invoices (key: materialTypeId, value: rate)
+ *                 example: {"507f1f77bcf86cd799439018": 50.00, "507f1f77bcf86cd799439019": 75.00}
+ *               paletteRates:
+ *                 type: object
+ *                 description: Palette rates for sale invoices
+ *                 properties:
+ *                   loose:
+ *                     type: number
+ *                     description: Rate per kg for loose palette
+ *                     example: 60.00
+ *                   packed:
+ *                     type: number
+ *                     description: Rate per kg for packed palette
+ *                     example: 80.00
+ *               invoiceDate:
+ *                 type: string
+ *                 format: date-time
+ *                 description: Invoice date (optional, defaults to current date)
+ *                 example: "2025-01-15T10:30:00Z"
+ *               dueDate:
+ *                 type: string
+ *                 format: date-time
+ *                 description: Due date (optional, defaults to 30 days from invoice date)
+ *                 example: "2025-02-14T10:30:00Z"
+ *     responses:
+ *       201:
+ *         description: Invoice generated successfully
+ *       400:
+ *         description: Bad request - validation error, flagged entries, or missing rates
+ *       401:
+ *         description: Unauthorized - authentication required
+ *       403:
+ *         description: Forbidden - admin/supervisor access required
+ *       404:
+ *         description: Not found - vendor, plant, or no entries found
+ */
+router.post('/generate-from-range', InvoiceController.generateInvoiceFromRange);
+
+/**
+ * @swagger
  * /api/invoices/{id}:
  *   get:
  *     summary: Get invoice by ID

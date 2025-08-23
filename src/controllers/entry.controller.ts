@@ -596,11 +596,9 @@ export class EntryController {
    */
   static async downloadReceipt(req: Request, res: Response): Promise<void> {
     try {
-      const { filename, buffer } = await EntryService.generateReceiptPdf(req);
-      res.setHeader('Content-Type', 'application/pdf');
-      // Inline display; change to attachment for forced download
-      res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
-      res.status(200).send(buffer);
+      const { filename, s3Key } = await EntryService.generateReceiptPdf(req);
+      const url = await (await import('@services/s3.service')).S3Service.getPresignedGetUrl(s3Key);
+      res.redirect(url);
     } catch (error) {
       logger.error('Entry controller - downloadReceipt error:', error);
       throw error;

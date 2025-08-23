@@ -1,5 +1,5 @@
 // src/config/swaggerConfig.ts
-import swaggerAutogen from 'swagger-autogen';
+const swaggerAutogen = require('swagger-autogen');
 
 const doc = {
   info: {

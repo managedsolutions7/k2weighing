@@ -1,12 +1,12 @@
 // @ts-check
 
-import globals from 'globals';
-import js from '@eslint/js';
-import tseslint from 'typescript-eslint';
-import prettier from 'eslint-plugin-prettier';
-import configPrettier from 'eslint-config-prettier';
+const globals = require('globals');
+const js = require('@eslint/js');
+const tseslint = require('typescript-eslint');
+const prettier = require('eslint-plugin-prettier');
+const configPrettier = require('eslint-config-prettier');
 
-export default [
+module.exports = [
   // Global ignores
   {
     ignores: ['node_modules/', 'dist/'],
@@ -23,11 +23,15 @@ export default [
       parser: tseslint.parser,
       parserOptions: {
         project: './tsconfig.json',
-        tsconfigRootDir: import.meta.dirname,
+        tsconfigRootDir: __dirname,
         sourceType: 'module',
       },
       globals: {
         ...globals.node,
+        require: 'readonly',
+        module: 'readonly',
+        __dirname: 'readonly',
+        __filename: 'readonly',
       },
     },
     plugins: {
@@ -40,6 +44,9 @@ export default [
       '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/explicit-module-boundary-types': 'off',
       '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-require-imports': 'off',
+      'no-undef': 'off',
+      'no-case-declarations': 'off',
     },
   },
 

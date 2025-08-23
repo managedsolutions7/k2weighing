@@ -104,9 +104,19 @@ const entrySchema = new Schema<IEntry>(
 
 // Pre-save middleware to calculate total amount
 entrySchema.pre('save', function (next) {
-  if (this.quantity && this.rate) {
-    this.totalAmount = this.quantity * this.rate;
+  // Use the most accurate weight for total amount calculation
+  let weight = 0;
+  if (this.exactWeight && this.exactWeight > 0) weight = this.exactWeight;
+  else if (this.finalWeight && this.finalWeight > 0) weight = this.finalWeight;
+  else if (this.exitWeight && this.exitWeight > 0) weight = this.exitWeight;
+  else if (this.entryWeight && this.entryWeight > 0) weight = this.entryWeight;
+  else if (this.quantity && this.quantity > 0) weight = this.quantity;
+  else if (this.expectedWeight && this.expectedWeight > 0) weight = this.expectedWeight;
+
+  if (weight > 0 && this.rate) {
+    this.totalAmount = weight * this.rate;
   }
+
   // Auto-calc packedWeight for packed sale
   if (this.entryType === 'sale' && this.palletteType === 'packed') {
     if (typeof this.noOfBags === 'number' && typeof this.weightPerBag === 'number') {

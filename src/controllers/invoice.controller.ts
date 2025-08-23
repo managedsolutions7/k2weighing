@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
+import { S3Service } from '@services/s3.service';
 import { InvoiceService } from '@services/invoice.service';
 import logger from '@utils/logger';
 import CustomError from '@utils/customError';
@@ -547,31 +548,58 @@ export class InvoiceController {
     try {
       const { id } = req.params;
       let invoice = await InvoiceService.getInvoiceById(req);
-      let filePath = invoice.pdfPath
-        ? path.isAbsolute(invoice.pdfPath)
-          ? invoice.pdfPath
-          : path.join(process.cwd(), invoice.pdfPath)
-        : '';
-
-      // If PDF not generated or file missing, attempt to generate on-demand
-      if (!invoice.pdfPath || !fs.existsSync(filePath)) {
+      // If path looks like local FS or missing, regenerate and upload
+      if (!invoice.pdfPath || invoice.pdfPath.includes(path.sep)) {
         const generated = await InvoiceService.generatePdf(req);
-        filePath = path.isAbsolute(generated.pdfPath)
-          ? generated.pdfPath
-          : path.join(process.cwd(), generated.pdfPath);
-        // Refresh invoice to include pdfPath and invoiceNumber
         invoice = await InvoiceService.getInvoiceById(req);
       }
-
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="${invoice.invoiceNumber}.pdf"`);
-
-      const fileStream = fs.createReadStream(filePath);
-      fileStream.pipe(res);
-
-      logger.info(`PDF downloaded for invoice: ${invoice.invoiceNumber}`);
+      if (!invoice.pdfPath) {
+        throw new CustomError('PDF not generated for this invoice', 500);
+      }
+      const url = await S3Service.getPresignedGetUrl(invoice.pdfPath as string);
+      res.status(200).json({
+        success: true,
+        data: {
+          url,
+        },
+        message: 'PDF file retrieved successfully',
+      });
     } catch (error) {
       logger.error('Invoice controller - downloadPdf error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get available entries for invoice generation
+   */
+  static async getAvailableEntries(req: Request, res: Response): Promise<void> {
+    try {
+      const result = await InvoiceService.getAvailableEntries(req);
+      res.status(200).json({
+        success: true,
+        data: result,
+        message: 'Available entries retrieved successfully',
+      });
+    } catch (error) {
+      logger.error('Invoice controller - getAvailableEntries error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Generate invoice from date range and filters
+   */
+  static async generateInvoiceFromRange(req: Request, res: Response): Promise<void> {
+    try {
+      const invoice = await InvoiceService.generateInvoiceFromRange(req);
+      res.status(201).json({
+        success: true,
+        data: invoice,
+        message: 'Invoice generated successfully from date range',
+      });
+    } catch (error) {
+      logger.error('Invoice controller - generateInvoiceFromRange error:', error);
       throw error;
     }
   }

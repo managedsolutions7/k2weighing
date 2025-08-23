@@ -1,39 +1,18 @@
 // src/utils/logger.ts
 import { createLogger, format, transports } from 'winston';
-import 'winston-daily-rotate-file';
 
-const { combine, timestamp, printf } = format;
+const { combine, timestamp, json, errors, splat } = format;
 
-// Define the custom log format
-const logFormat = printf(({ level, message, timestamp, ...metadata }) => {
-  let msg = `${timestamp} [${level.toUpperCase()}] : ${message}`;
-  if (Object.keys(metadata).length > 0) {
-    msg += ` | ${JSON.stringify(metadata)}`;
-  }
-  return msg;
-});
+const isProd = process.env.NODE_ENV === 'production';
 
-// Configure the transports
-const fileRotateTransport = new transports.DailyRotateFile({
-  filename: 'logs/application-%DATE%.log',
-  datePattern: 'YYYY-MM-DD',
-  zippedArchive: true,
-  maxSize: '20m',
-  maxFiles: '14d',
-});
-
-// Create the logger instance
+// JSON structured logs to stdout; no file rotation to avoid local disk use
 const logger = createLogger({
-  level: 'info', // Default log level
-  format: combine(timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }), logFormat),
-  transports: [
-    new transports.Console({
-      format: combine(format.colorize(), logFormat),
-    }),
-    fileRotateTransport,
-  ],
-  exceptionHandlers: [new transports.File({ filename: 'logs/exceptions.log' })],
-  rejectionHandlers: [new transports.File({ filename: 'logs/rejections.log' })],
+  level: process.env.LOG_LEVEL || 'info',
+  format: combine(timestamp(), errors({ stack: true }), splat(), json()),
+  transports: [new transports.Console()],
 });
+
+// Note: In production on AWS, ship stdout/stderr to CloudWatch Logs (ECS/EKS/Elastic Beanstalk)
+// If needed, add a CloudWatch transport in a separate step.
 
 export default logger;

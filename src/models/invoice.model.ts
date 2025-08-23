@@ -26,12 +26,29 @@ const invoiceSchema = new Schema<IInvoice>(
         required: true,
       },
     ],
-    // Map of materialType -> rate for this invoice
+    invoiceType: {
+      type: String,
+      enum: ['purchase', 'sale'],
+      required: true,
+    },
+    startDate: {
+      type: Date,
+      required: true,
+    },
+    endDate: {
+      type: Date,
+      required: true,
+    },
+    // Map of materialType -> rate for purchase invoices
     materialRates: {
       type: Map,
       of: Number,
-      required: true,
-      default: new Map(),
+      required: false,
+    },
+    // Palette rates for sale invoices
+    paletteRates: {
+      loose: { type: Number, required: false },
+      packed: { type: Number, required: false },
     },
     totalQuantity: {
       type: Number,
@@ -42,6 +59,29 @@ const invoiceSchema = new Schema<IInvoice>(
       type: Number,
       required: true,
       min: 0,
+    },
+    // Material-wise breakdown for purchase invoices
+    materialBreakdown: [
+      {
+        materialType: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: 'Material',
+          required: false,
+        },
+        materialName: { type: String, required: false },
+        totalQuantity: { type: Number, required: false, min: 0 },
+        totalMoistureQuantity: { type: Number, required: false, min: 0 },
+        totalDustQuantity: { type: Number, required: false, min: 0 },
+        finalQuantity: { type: Number, required: false, min: 0 },
+        rate: { type: Number, required: false, min: 0 },
+        totalAmount: { type: Number, required: false, min: 0 },
+      },
+    ],
+    // Palette breakdown for sale invoices
+    paletteBreakdown: {
+      totalBags: { type: Number, required: false, min: 0 },
+      weightPerBag: { type: Number, required: false, min: 0 },
+      totalPackedWeight: { type: Number, required: false, min: 0 },
     },
     invoiceDate: {
       type: Date,
@@ -101,7 +141,9 @@ invoiceSchema.pre('validate', async function (next) {
 // Index for better query performance
 invoiceSchema.index({ vendor: 1, invoiceDate: -1 });
 invoiceSchema.index({ plant: 1, invoiceDate: -1 });
+invoiceSchema.index({ invoiceType: 1 });
 invoiceSchema.index({ status: 1 });
 invoiceSchema.index({ createdBy: 1, invoiceDate: -1 });
+invoiceSchema.index({ startDate: 1, endDate: 1 });
 
 export default mongoose.model<IInvoice>('Invoice', invoiceSchema);

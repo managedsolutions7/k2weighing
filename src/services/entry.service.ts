@@ -21,6 +21,7 @@ import {
 } from '@constants/cache.constants';
 import Vehicle from '@models/vehicle.model';
 import { VARIANCE_TOLERANCE } from '@constants/variance.constants';
+import { S3Service } from './s3.service';
 
 export class EntryService {
   /**
@@ -256,7 +257,7 @@ export class EntryService {
       }
       entry.quantity = exactWeight;
       const rate = typeof (entry as any).rate === 'number' ? (entry as any).rate : 0;
-      entry.totalAmount = Number(entry.quantity) * rate;
+      entry.totalAmount = exactWeight * rate;
     }
 
     entry.exitWeight = exitWeight;
@@ -332,15 +333,37 @@ export class EntryService {
 
     for (const invoice of invoices) {
       const allEntries = await Entry.find({ _id: { $in: invoice.entries }, isActive: true }).select(
-        'quantity totalAmount',
+        'exactWeight finalWeight exitWeight entryWeight quantity totalAmount rate',
       );
-      const totalQuantity = allEntries.reduce((sum, e) => sum + (e.quantity || 0), 0);
-      const totalAmount = allEntries.reduce((sum, e) => sum + (e.totalAmount || 0), 0);
+
+      // Use the same weight calculation logic as in reports
+      const totalQuantity = allEntries.reduce((sum, e) => {
+        const weight = this.computeWeightForInvoice(e);
+        return sum + weight;
+      }, 0);
+
+      const totalAmount = allEntries.reduce((sum, e) => {
+        const weight = this.computeWeightForInvoice(e);
+        const rate = e.rate || 0;
+        return sum + weight * rate;
+      }, 0);
+
       await InvoiceModel.findByIdAndUpdate(invoice._id, { totalQuantity, totalAmount });
       logger.info(
         `Invoice ${invoice._id.toString()} recalculated after entry ${entryId.toString()} update`,
       );
     }
+  }
+
+  // Helper method for invoice recalculation using the same weight logic
+  private static computeWeightForInvoice(entry: any): number {
+    // Priority order: exactWeight > finalWeight > exitWeight > entryWeight > quantity
+    if (entry.exactWeight && entry.exactWeight > 0) return entry.exactWeight;
+    if (entry.finalWeight && entry.finalWeight > 0) return entry.finalWeight;
+    if (entry.exitWeight && entry.exitWeight > 0) return entry.exitWeight;
+    if (entry.entryWeight && entry.entryWeight > 0) return entry.entryWeight;
+    if (entry.quantity && entry.quantity > 0) return entry.quantity;
+    return 0;
   }
 
   /**
@@ -650,10 +673,11 @@ export class EntryService {
         }
       }
 
-      // totalAmount if quantity or rate updated/available
-      const nextQty = updates.quantity ?? entry.quantity;
+      // totalAmount if exactWeight or rate updated/available
+      const nextWeight =
+        updates.exactWeight ?? entry.exactWeight ?? updates.quantity ?? entry.quantity;
       const nextRate = updates.rate ?? entry.rate ?? 0;
-      updates.totalAmount = Number(nextQty) * Number(nextRate);
+      updates.totalAmount = Number(nextWeight) * Number(nextRate);
 
       (updates as any).updatedBy = (req as any).user?.id;
 
@@ -701,7 +725,7 @@ export class EntryService {
   /**
    * Generate receipt PDF for an entry and return as buffer
    */
-  static async generateReceiptPdf(req: Request): Promise<{ filename: string; buffer: Buffer }> {
+  static async generateReceiptPdf(req: Request): Promise<{ filename: string; s3Key: string }> {
     const { id } = req.params;
     const requester = (req as any).user as { role?: string; plantId?: string } | undefined;
 
@@ -736,8 +760,15 @@ export class EntryService {
 
     return await new Promise((resolve, reject) => {
       doc.on('data', (chunk) => chunks.push(chunk as Buffer));
-      doc.on('end', () => {
-        resolve({ filename, buffer: Buffer.concat(chunks) });
+      doc.on('end', async () => {
+        try {
+          const buffer = Buffer.concat(chunks);
+          const key = S3Service.buildKey(['receipts', filename]);
+          await S3Service.putObject(key, buffer, 'application/pdf');
+          resolve({ filename, s3Key: key });
+        } catch (e) {
+          reject(e);
+        }
       });
       doc.on('error', reject);
 

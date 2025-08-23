@@ -22,6 +22,31 @@ import {
 
 export class ReportService {
   /**
+   * Helper function to compute the most accurate weight for an entry
+   */
+  private static computeWeight(entry: any): number {
+    // Priority order: exactWeight > finalWeight > exitWeight > entryWeight > quantity
+    if (entry.exactWeight && entry.exactWeight > 0) return entry.exactWeight;
+    if (entry.finalWeight && entry.finalWeight > 0) return entry.finalWeight;
+    if (entry.exitWeight && entry.exitWeight > 0) return entry.exitWeight;
+    if (entry.entryWeight && entry.entryWeight > 0) return entry.entryWeight;
+    if (entry.quantity && entry.quantity > 0) return entry.quantity;
+    if (entry.expectedWeight && entry.expectedWeight > 0) return entry.expectedWeight;
+    return 0;
+  }
+
+  /**
+   * Helper function to compute the most accurate amount for an entry
+   */
+  private static computeAmount(entry: any): number {
+    const weight = this.computeWeight(entry);
+    if (entry.rate && entry.rate > 0) {
+      return weight * entry.rate;
+    }
+    return entry.totalAmount || 0;
+  }
+
+  /**
    * Generate summary report
    */
   static async generateSummaryReport(req: Request): Promise<SummaryReport> {
@@ -46,23 +71,59 @@ export class ReportService {
         if (endDate) entryFilter.entryDate.$lte = new Date(endDate as string);
       }
 
-      // Entry-based KPIs for counts and quantity
+      // Entry-based KPIs for counts and quantity with new weight calculation
       const entryPipeline: any[] = [
         { $match: entryFilter },
-        // Compute a robust quantity: prefer exactWeight, then quantity, then expectedWeight
         {
           $addFields: {
-            computedQty: {
-              $cond: [
-                { $ne: ['$exactWeight', null] },
-                '$exactWeight',
-                {
+            computedWeight: {
+              $let: {
+                vars: {
+                  exactWeight: { $ifNull: ['$exactWeight', 0] },
+                  finalWeight: { $ifNull: ['$finalWeight', 0] },
+                  exitWeight: { $ifNull: ['$exitWeight', 0] },
+                  entryWeight: { $ifNull: ['$entryWeight', 0] },
+                  quantity: { $ifNull: ['$quantity', 0] },
+                  expectedWeight: { $ifNull: ['$expectedWeight', 0] },
+                },
+                in: {
                   $cond: [
-                    { $gt: ['$quantity', 0] },
-                    '$quantity',
-                    { $ifNull: ['$expectedWeight', 0] },
+                    { $gt: ['$$exactWeight', 0] },
+                    '$$exactWeight',
+                    {
+                      $cond: [
+                        { $gt: ['$$finalWeight', 0] },
+                        '$$finalWeight',
+                        {
+                          $cond: [
+                            { $gt: ['$$exitWeight', 0] },
+                            '$$exitWeight',
+                            {
+                              $cond: [
+                                { $gt: ['$$entryWeight', 0] },
+                                '$$entryWeight',
+                                {
+                                  $cond: [
+                                    { $gt: ['$$quantity', 0] },
+                                    '$$quantity',
+                                    '$$expectedWeight',
+                                  ],
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
                   ],
                 },
+              },
+            },
+            computedAmount: {
+              $cond: [
+                { $and: [{ $gt: ['$rate', 0] }, { $gt: ['$computedWeight', 0] }] },
+                { $multiply: ['$rate', '$computedWeight'] },
+                { $ifNull: ['$totalAmount', 0] },
               ],
             },
           },
@@ -71,20 +132,29 @@ export class ReportService {
           $group: {
             _id: null,
             totalEntries: { $sum: 1 },
-            totalQuantity: { $sum: '$computedQty' },
+            totalQuantity: { $sum: '$computedWeight' },
+            totalAmount: { $sum: '$computedAmount' },
             purchaseEntries: {
               $sum: { $cond: [{ $eq: ['$entryType', 'purchase'] }, 1, 0] },
             },
             purchaseQuantity: {
               $sum: {
-                $cond: [{ $eq: ['$entryType', 'purchase'] }, '$computedQty', 0],
+                $cond: [{ $eq: ['$entryType', 'purchase'] }, '$computedWeight', 0],
+              },
+            },
+            purchaseAmount: {
+              $sum: {
+                $cond: [{ $eq: ['$entryType', 'purchase'] }, '$computedAmount', 0],
               },
             },
             saleEntries: {
               $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, 1, 0] },
             },
             saleQuantity: {
-              $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, '$computedQty', 0] },
+              $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, '$computedWeight', 0] },
+            },
+            saleAmount: {
+              $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, '$computedAmount', 0] },
             },
           },
         },
@@ -102,91 +172,19 @@ export class ReportService {
 
       const filterString = serializeFilters({ entryType, vendor, plant, startDate, endDate });
       const cacheKey = REPORT_SUMMARY_KEY(filterString);
-      const [entryAgg, amountAgg] = await CacheService.getOrSet<any[]>(
-        cacheKey,
-        REPORTS_CACHE_TTL,
-        async () => {
-          const [eAgg, aAgg] = await Promise.all([
-            Entry.aggregate(entryPipeline),
-            // compute totalAmount and type-wise amounts via invoices + lookup entries
-            Entry.db.models.Invoice.aggregate([
-              { $match: invoiceMatch },
-              {
-                $lookup: {
-                  from: 'entries',
-                  localField: 'entries',
-                  foreignField: '_id',
-                  as: 'entryDocs',
-                },
-              },
-              { $unwind: '$entryDocs' },
-              // optional filter by entryType
-              ...(entryType ? [{ $match: { 'entryDocs.entryType': entryType } }] : []),
-              {
-                $addFields: {
-                  materialKey: {
-                    $cond: [
-                      { $ne: ['$entryDocs.materialType', null] },
-                      { $toString: '$entryDocs.materialType' },
-                      null,
-                    ],
-                  },
-                },
-              },
-              {
-                $addFields: {
-                  rate: {
-                    $cond: [
-                      { $ne: ['$materialKey', null] },
-                      {
-                        $ifNull: [
-                          { $getField: { input: '$materialRates', field: '$materialKey' } },
-                          0,
-                        ],
-                      },
-                      0,
-                    ],
-                  },
-                },
-              },
-              {
-                $addFields: {
-                  lineAmount: { $multiply: [{ $ifNull: ['$entryDocs.quantity', 0] }, '$rate'] },
-                },
-              },
-              {
-                $group: {
-                  _id: null,
-                  totalAmount: { $sum: '$lineAmount' },
-                  purchaseAmount: {
-                    $sum: {
-                      $cond: [{ $eq: ['$entryDocs.entryType', 'purchase'] }, '$lineAmount', 0],
-                    },
-                  },
-                  saleAmount: {
-                    $sum: {
-                      $cond: [{ $eq: ['$entryDocs.entryType', 'sale'] }, '$lineAmount', 0],
-                    },
-                  },
-                },
-              },
-            ]),
-          ]);
-          return [eAgg, aAgg];
-        },
-      );
+      const results = await CacheService.getOrSet<any[]>(cacheKey, REPORTS_CACHE_TTL, async () => {
+        return Entry.aggregate(entryPipeline);
+      });
 
-      const e = (entryAgg && entryAgg[0]) || {
+      const result = results?.[0] || {
         totalEntries: 0,
         totalQuantity: 0,
+        totalAmount: 0,
         purchaseEntries: 0,
         purchaseQuantity: 0,
+        purchaseAmount: 0,
         saleEntries: 0,
         saleQuantity: 0,
-      };
-      const a = (amountAgg && amountAgg[0]) || {
-        totalAmount: 0,
-        purchaseAmount: 0,
         saleAmount: 0,
       };
 
@@ -195,19 +193,19 @@ export class ReportService {
         end: endDate ? new Date(endDate as string) : new Date(),
       };
 
-      const averageRate = e.totalQuantity > 0 ? a.totalAmount / e.totalQuantity : 0;
-      logger.info(`Summary report generated with ${e.totalEntries} entries`);
+      const averageRate = result.totalQuantity > 0 ? result.totalAmount / result.totalQuantity : 0;
+      logger.info(`Summary report generated with ${result.totalEntries} entries`);
       return {
-        totalEntries: e.totalEntries,
-        totalQuantity: e.totalQuantity,
-        totalAmount: a.totalAmount,
+        totalEntries: result.totalEntries,
+        totalQuantity: result.totalQuantity,
+        totalAmount: result.totalAmount,
         averageRate,
-        purchaseEntries: e.purchaseEntries,
-        purchaseQuantity: e.purchaseQuantity,
-        purchaseAmount: a.purchaseAmount,
-        saleEntries: e.saleEntries,
-        saleQuantity: e.saleQuantity,
-        saleAmount: a.saleAmount,
+        purchaseEntries: result.purchaseEntries,
+        purchaseQuantity: result.purchaseQuantity,
+        purchaseAmount: result.purchaseAmount,
+        saleEntries: result.saleEntries,
+        saleQuantity: result.saleQuantity,
+        saleAmount: result.saleAmount,
         dateRange,
       };
     } catch (error) {
@@ -267,6 +265,7 @@ export class ReportService {
           .populate('vendor', 'name code')
           .populate('plant', 'name code')
           .populate('vehicle', 'vehicleNumber driverName')
+          .populate('materialType', 'name')
           .sort({ entryDate: -1, createdAt: -1 })
           .skip(skip)
           .limit(Number(limit));
@@ -316,38 +315,61 @@ export class ReportService {
         if (endDate) filter.entryDate.$lte = new Date(endDate as string);
       }
 
-      // Compute vendor report amounts using invoices joined with entries
+      // Compute vendor report using new weight calculation logic
       const pipeline: any[] = [
-        { $match: { isActive: true, ...(plant ? { plant } : {}) } },
-        {
-          $lookup: {
-            from: 'entries',
-            localField: 'entries',
-            foreignField: '_id',
-            as: 'entryDocs',
-          },
-        },
-        { $unwind: '$entryDocs' },
-        ...(entryType ? [{ $match: { 'entryDocs.entryType': entryType } }] : []),
+        { $match: filter },
         {
           $addFields: {
-            materialKey: { $toString: '$entryDocs.materialType' },
-            rate: {
-              $ifNull: [
-                {
-                  $getField: {
-                    input: '$materialRates',
-                    field: { $toString: '$entryDocs.materialType' },
-                  },
+            computedWeight: {
+              $let: {
+                vars: {
+                  exactWeight: { $ifNull: ['$exactWeight', 0] },
+                  finalWeight: { $ifNull: ['$finalWeight', 0] },
+                  exitWeight: { $ifNull: ['$exitWeight', 0] },
+                  entryWeight: { $ifNull: ['$entryWeight', 0] },
+                  quantity: { $ifNull: ['$quantity', 0] },
+                  expectedWeight: { $ifNull: ['$expectedWeight', 0] },
                 },
-                0,
+                in: {
+                  $cond: [
+                    { $gt: ['$$exactWeight', 0] },
+                    '$$exactWeight',
+                    {
+                      $cond: [
+                        { $gt: ['$$finalWeight', 0] },
+                        '$$finalWeight',
+                        {
+                          $cond: [
+                            { $gt: ['$$exitWeight', 0] },
+                            '$$exitWeight',
+                            {
+                              $cond: [
+                                { $gt: ['$$entryWeight', 0] },
+                                '$$entryWeight',
+                                {
+                                  $cond: [
+                                    { $gt: ['$$quantity', 0] },
+                                    '$$quantity',
+                                    '$$expectedWeight',
+                                  ],
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+            computedAmount: {
+              $cond: [
+                { $and: [{ $gt: ['$rate', 0] }, { $gt: ['$computedWeight', 0] }] },
+                { $multiply: ['$rate', '$computedWeight'] },
+                { $ifNull: ['$totalAmount', 0] },
               ],
             },
-          },
-        },
-        {
-          $addFields: {
-            lineAmount: { $multiply: [{ $ifNull: ['$entryDocs.quantity', 0] }, '$rate'] },
           },
         },
         {
@@ -364,36 +386,36 @@ export class ReportService {
             _id: '$vendor',
             vendor: { $first: '$vendorInfo' },
             totalEntries: { $sum: 1 },
-            totalQuantity: { $sum: '$entryDocs.quantity' },
-            totalAmount: { $sum: '$lineAmount' },
+            totalQuantity: { $sum: '$computedWeight' },
+            totalAmount: { $sum: '$computedAmount' },
             averageRate: {
               $avg: {
                 $cond: [
-                  { $gt: ['$entryDocs.quantity', 0] },
-                  { $divide: ['$lineAmount', '$entryDocs.quantity'] },
+                  { $gt: ['$computedWeight', 0] },
+                  { $divide: ['$computedAmount', '$computedWeight'] },
                   0,
                 ],
               },
             },
             purchaseEntries: {
-              $sum: { $cond: [{ $eq: ['$entryDocs.entryType', 'purchase'] }, 1, 0] },
+              $sum: { $cond: [{ $eq: ['$entryType', 'purchase'] }, 1, 0] },
             },
             purchaseQuantity: {
               $sum: {
-                $cond: [{ $eq: ['$entryDocs.entryType', 'purchase'] }, '$entryDocs.quantity', 0],
+                $cond: [{ $eq: ['$entryType', 'purchase'] }, '$computedWeight', 0],
               },
             },
             purchaseAmount: {
-              $sum: { $cond: [{ $eq: ['$entryDocs.entryType', 'purchase'] }, '$lineAmount', 0] },
+              $sum: { $cond: [{ $eq: ['$entryType', 'purchase'] }, '$computedAmount', 0] },
             },
-            saleEntries: { $sum: { $cond: [{ $eq: ['$entryDocs.entryType', 'sale'] }, 1, 0] } },
+            saleEntries: { $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, 1, 0] } },
             saleQuantity: {
               $sum: {
-                $cond: [{ $eq: ['$entryDocs.entryType', 'sale'] }, '$entryDocs.quantity', 0],
+                $cond: [{ $eq: ['$entryType', 'sale'] }, '$computedWeight', 0],
               },
             },
             saleAmount: {
-              $sum: { $cond: [{ $eq: ['$entryDocs.entryType', 'sale'] }, '$lineAmount', 0] },
+              $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, '$computedAmount', 0] },
             },
           },
         },
@@ -439,35 +461,59 @@ export class ReportService {
       }
 
       const pipeline: any[] = [
-        { $match: { isActive: true, ...(vendor ? { vendor } : {}) } },
-        {
-          $lookup: {
-            from: 'entries',
-            localField: 'entries',
-            foreignField: '_id',
-            as: 'entryDocs',
-          },
-        },
-        { $unwind: '$entryDocs' },
-        ...(entryType ? [{ $match: { 'entryDocs.entryType': entryType } }] : []),
+        { $match: filter },
         {
           $addFields: {
-            rate: {
-              $ifNull: [
-                {
-                  $getField: {
-                    input: '$materialRates',
-                    field: { $toString: '$entryDocs.materialType' },
-                  },
+            computedWeight: {
+              $let: {
+                vars: {
+                  exactWeight: { $ifNull: ['$exactWeight', 0] },
+                  finalWeight: { $ifNull: ['$finalWeight', 0] },
+                  exitWeight: { $ifNull: ['$exitWeight', 0] },
+                  entryWeight: { $ifNull: ['$entryWeight', 0] },
+                  quantity: { $ifNull: ['$quantity', 0] },
+                  expectedWeight: { $ifNull: ['$expectedWeight', 0] },
                 },
-                0,
+                in: {
+                  $cond: [
+                    { $gt: ['$$exactWeight', 0] },
+                    '$$exactWeight',
+                    {
+                      $cond: [
+                        { $gt: ['$$finalWeight', 0] },
+                        '$$finalWeight',
+                        {
+                          $cond: [
+                            { $gt: ['$$exitWeight', 0] },
+                            '$$exitWeight',
+                            {
+                              $cond: [
+                                { $gt: ['$$entryWeight', 0] },
+                                '$$entryWeight',
+                                {
+                                  $cond: [
+                                    { $gt: ['$$quantity', 0] },
+                                    '$$quantity',
+                                    '$$expectedWeight',
+                                  ],
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+            computedAmount: {
+              $cond: [
+                { $and: [{ $gt: ['$rate', 0] }, { $gt: ['$computedWeight', 0] }] },
+                { $multiply: ['$rate', '$computedWeight'] },
+                { $ifNull: ['$totalAmount', 0] },
               ],
             },
-          },
-        },
-        {
-          $addFields: {
-            lineAmount: { $multiply: [{ $ifNull: ['$entryDocs.quantity', 0] }, '$rate'] },
           },
         },
         {
@@ -484,36 +530,36 @@ export class ReportService {
             _id: '$plant',
             plant: { $first: '$plantInfo' },
             totalEntries: { $sum: 1 },
-            totalQuantity: { $sum: '$entryDocs.quantity' },
-            totalAmount: { $sum: '$lineAmount' },
+            totalQuantity: { $sum: '$computedWeight' },
+            totalAmount: { $sum: '$computedAmount' },
             averageRate: {
               $avg: {
                 $cond: [
-                  { $gt: ['$entryDocs.quantity', 0] },
-                  { $divide: ['$lineAmount', '$entryDocs.quantity'] },
+                  { $gt: ['$computedWeight', 0] },
+                  { $divide: ['$computedAmount', '$computedWeight'] },
                   0,
                 ],
               },
             },
             purchaseEntries: {
-              $sum: { $cond: [{ $eq: ['$entryDocs.entryType', 'purchase'] }, 1, 0] },
+              $sum: { $cond: [{ $eq: ['$entryType', 'purchase'] }, 1, 0] },
             },
             purchaseQuantity: {
               $sum: {
-                $cond: [{ $eq: ['$entryDocs.entryType', 'purchase'] }, '$entryDocs.quantity', 0],
+                $cond: [{ $eq: ['$entryType', 'purchase'] }, '$computedWeight', 0],
               },
             },
             purchaseAmount: {
-              $sum: { $cond: [{ $eq: ['$entryDocs.entryType', 'purchase'] }, '$lineAmount', 0] },
+              $sum: { $cond: [{ $eq: ['$entryType', 'purchase'] }, '$computedAmount', 0] },
             },
-            saleEntries: { $sum: { $cond: [{ $eq: ['$entryDocs.entryType', 'sale'] }, 1, 0] } },
+            saleEntries: { $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, 1, 0] } },
             saleQuantity: {
               $sum: {
-                $cond: [{ $eq: ['$entryDocs.entryType', 'sale'] }, '$entryDocs.quantity', 0],
+                $cond: [{ $eq: ['$entryType', 'sale'] }, '$computedWeight', 0],
               },
             },
             saleAmount: {
-              $sum: { $cond: [{ $eq: ['$entryDocs.entryType', 'sale'] }, '$lineAmount', 0] },
+              $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, '$computedAmount', 0] },
             },
           },
         },
@@ -574,6 +620,60 @@ export class ReportService {
       const pipeline: any[] = [
         { $match: filter },
         {
+          $addFields: {
+            computedWeight: {
+              $let: {
+                vars: {
+                  exactWeight: { $ifNull: ['$exactWeight', 0] },
+                  finalWeight: { $ifNull: ['$finalWeight', 0] },
+                  exitWeight: { $ifNull: ['$exitWeight', 0] },
+                  entryWeight: { $ifNull: ['$entryWeight', 0] },
+                  quantity: { $ifNull: ['$quantity', 0] },
+                  expectedWeight: { $ifNull: ['$expectedWeight', 0] },
+                },
+                in: {
+                  $cond: [
+                    { $gt: ['$$exactWeight', 0] },
+                    '$$exactWeight',
+                    {
+                      $cond: [
+                        { $gt: ['$$finalWeight', 0] },
+                        '$$finalWeight',
+                        {
+                          $cond: [
+                            { $gt: ['$$exitWeight', 0] },
+                            '$$exitWeight',
+                            {
+                              $cond: [
+                                { $gt: ['$$entryWeight', 0] },
+                                '$$entryWeight',
+                                {
+                                  $cond: [
+                                    { $gt: ['$$quantity', 0] },
+                                    '$$quantity',
+                                    '$$expectedWeight',
+                                  ],
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+            computedAmount: {
+              $cond: [
+                { $and: [{ $gt: ['$rate', 0] }, { $gt: ['$computedWeight', 0] }] },
+                { $multiply: ['$rate', '$computedWeight'] },
+                { $ifNull: ['$totalAmount', 0] },
+              ],
+            },
+          },
+        },
+        {
           $group: {
             _id: {
               $dateToString: {
@@ -582,25 +682,25 @@ export class ReportService {
               },
             },
             entries: { $sum: 1 },
-            quantity: { $sum: '$quantity' },
-            amount: { $sum: '$totalAmount' },
+            quantity: { $sum: '$computedWeight' },
+            amount: { $sum: '$computedAmount' },
             purchaseEntries: {
               $sum: { $cond: [{ $eq: ['$entryType', 'purchase'] }, 1, 0] },
             },
             purchaseQuantity: {
-              $sum: { $cond: [{ $eq: ['$entryType', 'purchase'] }, '$quantity', 0] },
+              $sum: { $cond: [{ $eq: ['$entryType', 'purchase'] }, '$computedWeight', 0] },
             },
             purchaseAmount: {
-              $sum: { $cond: [{ $eq: ['$entryType', 'purchase'] }, '$totalAmount', 0] },
+              $sum: { $cond: [{ $eq: ['$entryType', 'purchase'] }, '$computedAmount', 0] },
             },
             saleEntries: {
               $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, 1, 0] },
             },
             saleQuantity: {
-              $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, '$quantity', 0] },
+              $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, '$computedWeight', 0] },
             },
             saleAmount: {
-              $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, '$totalAmount', 0] },
+              $sum: { $cond: [{ $eq: ['$entryType', 'sale'] }, '$computedAmount', 0] },
             },
           },
         },
@@ -715,6 +815,23 @@ export class ReportService {
           'Quantity',
           'Rate',
           'Amount',
+          'Material Type',
+          'Pallette Type',
+          'No. of Bags',
+          'Weight per Bag',
+          'Packed Weight',
+          'Entry Weight',
+          'Exit Weight',
+          'Final Weight',
+          'Exact Weight',
+          'Moisture %',
+          'Dust %',
+          'Moisture Weight',
+          'Dust Weight',
+          'Variance Flag',
+          'Reviewed',
+          'Flagged',
+          'Manual Weight',
         ];
         rows = data.entries.map((entry: any) => [
           entry.entryDate.toLocaleDateString(),
@@ -723,9 +840,26 @@ export class ReportService {
           entry.plant.name,
           entry.vehicle.vehicleNumber,
           entry.vehicle.driverName,
-          entry.quantity.toString(),
-          entry.rate.toString(),
-          entry.totalAmount.toString(),
+          ReportService.computeWeight(entry).toString(),
+          (entry.rate || 0).toString(),
+          ReportService.computeAmount(entry).toString(),
+          entry.materialType?.name || 'N/A',
+          entry.palletteType || 'N/A',
+          (entry.noOfBags || 0).toString(),
+          (entry.weightPerBag || 0).toString(),
+          (entry.packedWeight || 0).toString(),
+          (entry.entryWeight || 0).toString(),
+          (entry.exitWeight || 0).toString(),
+          (entry.finalWeight || 0).toString(),
+          (entry.exactWeight || 0).toString(),
+          (entry.moisture || 0).toString(),
+          (entry.dust || 0).toString(),
+          (entry.moistureWeight || 0).toString(),
+          (entry.dustWeight || 0).toString(),
+          entry.varianceFlag ? 'Yes' : 'No',
+          entry.isReviewed ? 'Yes' : 'No',
+          entry.flagged ? 'Yes' : 'No',
+          entry.manualWeight ? 'Yes' : 'No',
         ]);
       }
 

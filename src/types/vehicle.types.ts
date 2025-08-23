@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import { VehicleType } from '../constants';
 
-export interface IVehicle extends Document {
+export interface IVehicle {
   _id: mongoose.Types.ObjectId;
   vehicleCode: string;
   vehicleNumber: string;

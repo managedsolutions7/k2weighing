@@ -1,4 +1,3 @@
-/* eslint-disable */
 import swaggerAutogen from 'swagger-autogen';
 
 const doc = {
