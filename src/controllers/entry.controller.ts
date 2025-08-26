@@ -598,7 +598,7 @@ export class EntryController {
     try {
       const { filename, s3Key } = await EntryService.generateReceiptPdf(req);
       const url = await (await import('@services/s3.service')).S3Service.getPresignedGetUrl(s3Key);
-      res.redirect(url);
+      res.json({ url });
     } catch (error) {
       logger.error('Entry controller - downloadReceipt error:', error);
       throw error;

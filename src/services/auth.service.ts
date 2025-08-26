@@ -1,4 +1,5 @@
 import { Request } from 'express';
+import Plant from '../models/plant.model';
 import User from '../models/user.model';
 import { LoginRequest, RegisterRequest, ChangePasswordRequest } from '../types/auth.types';
 import { comparePasswords, hashPassword, validatePasswordStrength } from './hash.service';
@@ -228,6 +229,7 @@ export class AuthService {
         createdAt: Date;
       }>(cacheKey, USER_PROFILE_CACHE_TTL, async () => {
         const user = await User.findById(userId);
+        const plant = await Plant.findById(user?.plantId);
         if (!user) {
           throw new CustomError('User not found', 404);
         }
@@ -238,7 +240,7 @@ export class AuthService {
           name: user.name,
           role: user.role,
           empId: user.empId,
-          plantId: user.plantId?.toString(),
+          plantId: plant?.name,
           createdAt: user.createdAt,
         };
       });

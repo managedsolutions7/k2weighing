@@ -29,9 +29,10 @@ const VENDORS_BY_PLANT_ACTIVE_KEY = (plantId: string) =>
 const VENDORS_BY_PLANT_INACTIVE_KEY = (plantId: string) =>
   withVersion(`vendors:plant:${plantId}:inactive`);
 const VENDOR_BY_ID_KEY = (id: string) => withVersion(`vendor:${id}`);
+const VENDOR_BY_FILTERS_KEY = (filters: string) => withVersion(`vendors:filters:${filters}`);
 
 const getVendorsCacheKey = (queryParams: any): string => {
-  const { isActive, plantId } = queryParams || {};
+  const { isActive, plantId, q } = queryParams || {};
   if (plantId) {
     if (isActive === 'true') return VENDORS_BY_PLANT_ACTIVE_KEY(plantId);
     if (isActive === 'false') return VENDORS_BY_PLANT_INACTIVE_KEY(plantId);
@@ -39,6 +40,7 @@ const getVendorsCacheKey = (queryParams: any): string => {
   }
   if (isActive === 'true') return VENDORS_ACTIVE_CACHE_KEY;
   if (isActive === 'false') return VENDORS_INACTIVE_CACHE_KEY;
+  if (q) return VENDOR_BY_FILTERS_KEY(String(q).trim());
   return VENDORS_ALL_CACHE_KEY;
 };
 
@@ -56,6 +58,7 @@ const VEHICLES_BY_TYPE_ACTIVE_KEY = (vehicleType: string) =>
 const VEHICLES_BY_TYPE_INACTIVE_KEY = (vehicleType: string) =>
   withVersion(`vehicles:type:${vehicleType}:inactive`);
 const VEHICLE_BY_ID_KEY = (id: string) => withVersion(`vehicle:${id}`);
+const VEHICLE_BY_FILTERS_KEY = (filters: string) => withVersion(`vehicles:filters:${filters}`);
 
 const getVehiclesCacheKey = (queryParams: any): string => {
   const params = queryParams || {};
@@ -74,6 +77,7 @@ const getVehiclesCacheKey = (queryParams: any): string => {
   }
   if (normalizedIsActive === 'true') return VEHICLES_ACTIVE_CACHE_KEY;
   if (normalizedIsActive === 'false') return VEHICLES_INACTIVE_CACHE_KEY;
+  if (params.q) return VEHICLE_BY_FILTERS_KEY(String(params.q).trim());
   return VEHICLES_ALL_CACHE_KEY;
 };
 

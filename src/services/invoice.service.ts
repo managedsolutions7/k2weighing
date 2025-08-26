@@ -1,6 +1,5 @@
 import { Request } from 'express';
 import PDFDocument from 'pdfkit';
-import crypto from 'crypto';
 import CryptoJS from 'crypto-js';
 import QRCode from 'qrcode';
 import { S3Service } from './s3.service';
@@ -428,8 +427,7 @@ export class InvoiceService {
     timestamp: string;
   } {
     const timestamp = new Date().toISOString();
-    const secretKey =
-      process.env.INVOICE_SIGNATURE_SECRET || 'default-secret-key-change-in-production';
+    const secretKey = process.env.INVOICE_SIGNATURE_SECRET;
 
     // Create signature data
     const signatureData = {
@@ -443,6 +441,9 @@ export class InvoiceService {
 
     // Generate HMAC signature
     const dataString = JSON.stringify(signatureData);
+    if (!secretKey) {
+      throw new CustomError('Invoice signature secret key not found', 500);
+    }
     const signature = CryptoJS.HmacSHA256(dataString, secretKey).toString();
 
     // Generate QR code data for verification

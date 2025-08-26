@@ -388,6 +388,7 @@ export class EntryService {
         isReviewed,
         page = PaginationDefaults.PAGE,
         limit = PaginationDefaults.LIMIT,
+        q, // <-- add this
       } = req.query;
 
       const filter: any = {};
@@ -401,6 +402,7 @@ export class EntryService {
           filter.$or = [{ entryNumber: new RegExp(q, 'i') }];
         }
       }
+      console.log('filter', filter);
       if (isActive !== undefined) filter.isActive = isActive === 'true';
       if (flagged !== undefined) filter.flagged = flagged === 'true';
       if (isReviewed !== undefined) filter.isReviewed = isReviewed === 'true';
@@ -469,6 +471,7 @@ export class EntryService {
         isReviewed,
         page,
         limit,
+        q, // <-- add this
       });
       const cacheKey = ENTRIES_LIST_KEY(filterString);
       const entries = await CacheService.getOrSet<any[]>(cacheKey, ENTRIES_CACHE_TTL, async () => {
@@ -540,8 +543,8 @@ export class EntryService {
       const updateData: UpdateEntryRequest = req.body;
 
       // Vehicle can be updated to any type; only ensure it exists
+      const vehicle = await Entry.db.models.Vehicle.findById(updateData.vehicle);
       if (updateData.vehicle) {
-        const vehicle = await Entry.db.models.Vehicle.findById(updateData.vehicle);
         if (!vehicle) {
           throw new CustomError('Vehicle not found', 404);
         }
@@ -659,6 +662,35 @@ export class EntryService {
         updates.quantity = recomputedExact;
       }
 
+      // --- Add this block to recompute expectedWeight and varianceFlag ---
+      let expectedWeight: number | null = entry.expectedWeight ?? null;
+      if (entry.entryType === 'purchase' && entry.vehicle) {
+        // For purchase, expected = entryWeight - vehicle.tareWeight
+        if (
+          vehicle &&
+          typeof effectiveEntry === 'number' &&
+          typeof vehicle.tareWeight === 'number'
+        ) {
+          expectedWeight = effectiveEntry - vehicle.tareWeight;
+          updates.expectedWeight = expectedWeight;
+        }
+      } else if (entry.entryType === 'sale' && entry.vehicle) {
+        // For sale, expected = exitWeight - vehicle.tareWeight
+        const vehicle = await Vehicle.findById(entry.vehicle);
+        if (
+          vehicle &&
+          typeof effectiveExit === 'number' &&
+          typeof vehicle.tareWeight === 'number'
+        ) {
+          expectedWeight = effectiveExit - vehicle.tareWeight;
+          updates.expectedWeight = expectedWeight;
+        }
+      }
+      let varianceFlag: boolean | null = null;
+      if (expectedWeight != null && recomputedExact != null) {
+        varianceFlag = Math.abs(recomputedExact - expectedWeight) > VARIANCE_TOLERANCE;
+        updates.varianceFlag = varianceFlag;
+      }
       if (entry.entryType === 'purchase' && recomputedExact != null) {
         const mPct = updates.moisture ?? entry.moisture;
         const dPct = updates.dust ?? entry.dust;
@@ -754,12 +786,13 @@ export class EntryService {
     }
 
     // Build PDF in-memory
-    const doc = new PDFDocument({ margin: 50 });
+    const doc = new PDFDocument({ size: 'A5', margin: 30 });
     const chunks: Buffer[] = [];
     const filename = `${entry.entryNumber}-receipt.pdf`;
 
     return await new Promise((resolve, reject) => {
       doc.on('data', (chunk) => chunks.push(chunk as Buffer));
+
       doc.on('end', async () => {
         try {
           const buffer = Buffer.concat(chunks);
@@ -770,71 +803,171 @@ export class EntryService {
           reject(e);
         }
       });
+
       doc.on('error', reject);
 
-      // Content
-      doc.fontSize(22).text('RECEIPT', { align: 'center' });
-      doc.moveDown();
+      // ---------------------------
+      // HEADER
+      // ---------------------------
+      // Add logo if available
+      // doc.image("path/to/logo.png", 30, 20, { width: 50 });
 
-      doc.fontSize(12);
-      doc.text(`Entry Number: ${entry.entryNumber}`);
-      doc.text(`Entry Type: ${entry.entryType}`);
-      doc.text(`Date: ${new Date(entry.entryDate).toLocaleString()}`);
-      doc.moveDown();
+      doc.fontSize(22).fillColor('#2C3E50').text('RECEIPT', { align: 'center' }).moveDown(0.5);
 
-      doc.fontSize(14).text('VENDOR', { underline: true });
-      doc.fontSize(10);
+      // Divider
+      doc
+        .moveTo(30, doc.y)
+        .lineTo(doc.page.width - 30, doc.y)
+        .strokeColor('#BDC3C7')
+        .stroke();
+      doc.moveDown(1);
+
+      // ---------------------------
+      // ENTRY INFO
+      // ---------------------------
+      doc.font('Helvetica-Bold').fontSize(12).fillColor('#34495E');
+      doc.text('Entry Details', { underline: true });
+      doc.moveDown(0.5);
+
+      const entryDetails: [string, any][] = [
+        ['Entry Number', entry.entryNumber],
+        ['Entry Type', entry.entryType],
+        ['Date', new Date(entry.entryDate).toLocaleString()],
+      ];
+
+      entryDetails.forEach(([label, value]) => {
+        doc
+          .font('Helvetica-Bold')
+          .fillColor('#34495E')
+          .text(`${label}: `, { continued: true })
+          .font('Helvetica')
+          .fillColor('#2C3E50')
+          .text(value ?? '-');
+      });
+      doc.moveDown(1);
+
+      // ---------------------------
+      // VENDOR
+      // ---------------------------
       if (entry.vendor && typeof entry.vendor === 'object') {
-        // @ts-expect-error - vendor is an object
-        doc.text(`Name: ${entry.vendor.name}`);
-        // @ts-expect-error - vendor is an object
-        doc.text(`Code: ${entry.vendor.code}`);
-      }
-      doc.moveDown();
+        doc.font('Helvetica-Bold').fontSize(12).text('Vendor', {
+          underline: true,
+        });
+        doc.moveDown(0.3);
 
-      doc.fontSize(14).text('PLANT', { underline: true });
-      doc.fontSize(10);
+        doc
+          .font('Helvetica')
+          .fillColor('#2C3E50')
+          // @ts-expect-error vendor object
+          .text(`Name: ${entry.vendor.name}`)
+          // @ts-expect-error vendor object
+          .text(`Code: ${entry.vendor.code}`);
+        doc.moveDown(1);
+      }
+
+      // ---------------------------
+      // PLANT
+      // ---------------------------
       if (entry.plant && typeof entry.plant === 'object') {
-        // @ts-expect-error - plant is an object
-        doc.text(`Name: ${entry.plant.name}`);
-        // @ts-expect-error - plant is an object
-        doc.text(`Code: ${entry.plant.code}`);
-      }
-      doc.moveDown();
+        doc.font('Helvetica-Bold').fontSize(12).text('Plant', {
+          underline: true,
+        });
+        doc.moveDown(0.3);
 
-      doc.fontSize(14).text('VEHICLE', { underline: true });
-      doc.fontSize(10);
+        doc
+          .font('Helvetica')
+          .fillColor('#2C3E50')
+          // @ts-expect-error plant object
+          .text(`Name: ${entry.plant.name}`)
+          // @ts-expect-error plant object
+          .text(`Code: ${entry.plant.code}`);
+        doc.moveDown(1);
+      }
+
+      // ---------------------------
+      // VEHICLE
+      // ---------------------------
+      doc.font('Helvetica-Bold').fontSize(12).text('Vehicle', {
+        underline: true,
+      });
+      doc.moveDown(0.3);
+      doc.font('Helvetica').fillColor('#2C3E50');
+
       if (entry.vehicle && typeof entry.vehicle === 'object') {
-        // @ts-expect-error - vehicle is an object
+        // @ts-expect-error vehicle object
         doc.text(`Vehicle Number: ${entry.vehicle.vehicleNumber}`);
-        // @ts-expect-error - vehicle is an object
+        // @ts-expect-error vehicle object
         doc.text(`Vehicle Type: ${entry.vehicle.vehicleType}`);
       }
       doc.text(`Driver Name: ${entry.driverName || '-'}`);
       doc.text(`Driver Phone: ${entry.driverPhone || '-'}`);
-      doc.moveDown();
+      doc.moveDown(1);
 
-      doc.fontSize(14).text('WEIGHTS', { underline: true });
-      doc.fontSize(10);
-      doc.text(`Entry Weight: ${entry.entryWeight ?? '-'}`);
-      doc.text(`Exit Weight: ${entry.exitWeight ?? '-'}`);
-      doc.text(`Expected Weight: ${entry.expectedWeight ?? '-'}`);
-      doc.text(`Exact Weight: ${entry.exactWeight ?? '-'}`);
-      // Quality
+      // ---------------------------
+      // WEIGHTS
+      // ---------------------------
+      doc.font('Helvetica-Bold').fontSize(12).text('Weights', {
+        underline: true,
+      });
+      doc.moveDown(0.5);
+
+      const weights: [string, any][] = [
+        ['Entry Weight', entry.entryWeight ?? '-'],
+        ['Exit Weight', entry.exitWeight ?? '-'],
+        ['Expected Weight', entry.expectedWeight ?? '-'],
+        ['Exact Weight', entry.exactWeight ?? '-'],
+      ];
+
+      weights.forEach(([label, value]) => {
+        doc
+          .font('Helvetica-Bold')
+          .fillColor('#34495E')
+          .text(`${label}: `, { continued: true })
+          .font('Helvetica')
+          .fillColor('#2C3E50')
+          .text(value);
+      });
+
+      // ---------------------------
+      // QUALITY (PURCHASE ONLY)
+      // ---------------------------
       if (entry.entryType === 'purchase') {
-        doc.moveDown();
-        doc.fontSize(14).text('QUALITY (PURCHASE)', { underline: true });
-        doc.fontSize(10);
-        doc.text(`Moisture (%): ${entry.moisture ?? '-'}`);
-        doc.text(`Dust (%): ${entry.dust ?? '-'}`);
-        doc.text(`Moisture Weight: ${entry.moistureWeight ?? '-'}`);
-        doc.text(`Dust Weight: ${entry.dustWeight ?? '-'}`);
-        doc.text(`Final Weight: ${entry.finalWeight ?? '-'}`);
-      }
-      doc.moveDown(2);
+        doc.moveDown(1);
+        doc.font('Helvetica-Bold').fontSize(12).text('Quality (Purchase)', {
+          underline: true,
+        });
+        doc.moveDown(0.5);
 
-      doc.fontSize(10).text('Generated by Biofuel Management System', { align: 'center' });
-      doc.text(`Generated on: ${new Date().toLocaleString()}`, { align: 'center' });
+        const quality: [string, any][] = [
+          ['Moisture (%)', entry.moisture ?? '-'],
+          ['Dust (%)', entry.dust ?? '-'],
+          ['Moisture Weight', entry.moistureWeight ?? '-'],
+          ['Dust Weight', entry.dustWeight ?? '-'],
+          ['Final Weight', entry.finalWeight ?? '-'],
+        ];
+
+        quality.forEach(([label, value]) => {
+          doc
+            .font('Helvetica-Bold')
+            .fillColor('#34495E')
+            .text(`${label}: `, { continued: true })
+            .font('Helvetica')
+            .fillColor('#2C3E50')
+            .text(value);
+        });
+      }
+
+      // ---------------------------
+      // FOOTER
+      // ---------------------------
+      doc.moveDown(2);
+      doc
+        .fontSize(9)
+        .fillColor('#7F8C8D')
+        .text('Generated by Biofuel Management System', { align: 'center' });
+      doc.text(`Generated on: ${new Date().toLocaleString()}`, {
+        align: 'center',
+      });
 
       doc.end();
     });
