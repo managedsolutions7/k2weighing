@@ -1682,7 +1682,18 @@ export class EnhancedReportService {
   /**
    * Add vendor report content to PDF
    */
-  private static addVendorPDFContent(doc: any, data: any[]): void {
+  private static addVendorPDFContent(
+    doc: any,
+    data: any[],
+    options:
+      | {
+          includeCharts?: boolean;
+          includeSummary?: boolean;
+          dateFormat?: string;
+          timezone?: string;
+        }
+      | undefined,
+  ): void {
     doc.fontSize(16).font('Helvetica-Bold').text('Vendor Analytics');
     doc.moveDown(0.5);
 
@@ -1718,7 +1729,18 @@ export class EnhancedReportService {
   /**
    * Add plant report content to PDF
    */
-  private static addPlantPDFContent(doc: any, data: any[]): void {
+  private static addPlantPDFContent(
+    doc: any,
+    data: any[],
+    options:
+      | {
+          includeCharts?: boolean;
+          includeSummary?: boolean;
+          dateFormat?: string;
+          timezone?: string;
+        }
+      | undefined,
+  ): void {
     doc.fontSize(16).font('Helvetica-Bold').text('Plant Analytics');
     doc.moveDown(0.5);
 
