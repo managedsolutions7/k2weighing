@@ -13,7 +13,7 @@
     "lint": "eslint src/**/*.ts --ext .ts",
     "format": "prettier --write .",
     "lint:fix": "eslint . --ext .ts --fix",
-    "prepare": "husky"
+    "prepare": "if [ \"$NODE_ENV\" != \"production\" ]; then husky install; fi"
   },
   "lint-staged": {
     "**/*.{ts,tsx}": [

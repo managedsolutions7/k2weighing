@@ -10,7 +10,12 @@ build/
 .env.*.local
 .env.uat
 .env.prod
+.env.sample
+.env.dev
 
+dist/
+dist.zip
+*.zip
 
 # Logs
 logs/
