@@ -1718,16 +1718,7 @@ export class EnhancedReportService {
   /**
    * Add plant report content to PDF
    */
-  private static addPlantPDFContent(
-    doc: any,
-    data: any[],
-    options?: {
-      includeCharts?: boolean;
-      includeSummary?: boolean;
-      dateFormat?: string;
-      timezone?: string;
-    },
-  ): void {
+  private static addPlantPDFContent(doc: any, data: any[]): void {
     doc.fontSize(16).font('Helvetica-Bold').text('Plant Analytics');
     doc.moveDown(0.5);
 

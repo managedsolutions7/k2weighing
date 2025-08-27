@@ -31,7 +31,6 @@ export class EntryService {
     try {
       const entryData: CreateEntryRequest = req.body;
       const userId = (req as any).user?.id;
-      const userRole = (req as any).user?.role as string | undefined;
       const userPlantId = (req as any).user?.plantId as string | undefined;
 
       if (!userId) {

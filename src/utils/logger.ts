@@ -3,8 +3,6 @@ import { createLogger, format, transports } from 'winston';
 
 const { combine, timestamp, json, errors, splat } = format;
 
-const isProd = process.env.NODE_ENV === 'production';
-
 // JSON structured logs to stdout; no file rotation to avoid local disk use
 const logger = createLogger({
   level: process.env.LOG_LEVEL || 'info',
