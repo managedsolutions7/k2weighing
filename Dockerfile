@@ -1,35 +1,25 @@
-# ---------- Base Stage ----------
-FROM node:22-alpine AS base
-
-WORKDIR /app
-
-# Install only dependencies first (better caching)
-COPY package*.json ./
-RUN npm ci --only=production
-
 # ---------- Build Stage ----------
-FROM node:22-alpine AS build
-
+FROM node:20-alpine AS build
 WORKDIR /app
 
+# Install deps
 COPY package*.json tsconfig.json ./
 RUN npm install
 
+# Copy source and build
 COPY . .
 RUN npm run build
 
-# ---------- Final Runtime Stage ----------
-FROM node:22-alpine AS runtime
-
+# ---------- Runtime Stage ----------
+FROM node:20-alpine AS runtime
 WORKDIR /app
 
-# Copy only built artifacts & node_modules from base
-COPY --from=base /app/node_modules ./node_modules
-COPY --from=build /app/dist ./dist
+# Copy only production deps
 COPY package*.json ./
+RUN npm ci --only=production
 
-# Expose Elastic Beanstalk expected port
+# Copy compiled code from build stage
+COPY --from=build /app/dist ./dist
+
 EXPOSE 8080
-
-# Start the app
 CMD ["node", "dist/server.js"]
