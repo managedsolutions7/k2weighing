@@ -1,7 +1,5 @@
 // src/app.ts
 import express from 'express';
-import swaggerUi from 'swagger-ui-express';
-import swaggerDocs from '../docs/swagger-output.json';
 import authRoutes from './routes/auth.routes';
 import plantRoutes from './routes/plant.routes';
 import vehicleRoutes from './routes/vehicle.routes';
@@ -21,11 +19,9 @@ const app = express();
 
 app.use(express.json());
 
-app.use('/docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs as any));
-// Allow requests from your frontend origin only (replace with your actual frontend URL)
 app.use(
   cors({
-    origin: 'http://localhost:5173', // frontend URL
+    origin: '*', // frontend URL
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
     credentials: true, // if you want to allow cookies/auth headers
   }),
