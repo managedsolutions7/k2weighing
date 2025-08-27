@@ -3,22 +3,21 @@ name: Deploy to Elastic Beanstalk
 on:
   push:
     branches:
-      - main # or your deploy branch
+      - main
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v3
         with:
-          node-version: 20
+          node-version: 22
 
-      - name: Configure AWS credentials
+      - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -26,10 +25,10 @@ jobs:
           aws-region: ap-south-1
 
       - name: Install EB CLI
-        run: pip install awsebcli --upgrade
+        run: pip install --upgrade --user awsebcli
 
       - name: Deploy to Elastic Beanstalk
         run: |
-          eb init weighingapp-backend --platform "Docker running on 64bit Amazon Linux 2" --region ap-south-1
+          eb init weighingapp-backend --region ap-south-1 --platform "Node.js 18"
           eb use weighingapp-backend-env
           eb deploy
