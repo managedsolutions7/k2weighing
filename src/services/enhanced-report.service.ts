@@ -942,12 +942,8 @@ export class EnhancedReportService {
       const {
         format = 'csv',
         reportType = 'summary',
-        groupBy = 'vendor',
-        entryType,
         vendor,
         plant,
-        startDate,
-        endDate,
         includeCharts = false,
         includeSummary = true,
         dateFormat = 'DD/MM/YYYY',
@@ -1686,16 +1682,7 @@ export class EnhancedReportService {
   /**
    * Add vendor report content to PDF
    */
-  private static addVendorPDFContent(
-    doc: any,
-    data: any[],
-    options?: {
-      includeCharts?: boolean;
-      includeSummary?: boolean;
-      dateFormat?: string;
-      timezone?: string;
-    },
-  ): void {
+  private static addVendorPDFContent(doc: any, data: any[]): void {
     doc.fontSize(16).font('Helvetica-Bold').text('Vendor Analytics');
     doc.moveDown(0.5);
 

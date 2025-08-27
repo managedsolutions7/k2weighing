@@ -40,7 +40,6 @@ export class DashboardService {
       topVendorsLimit = '5',
       recentEntriesLimit = '10',
       recentInvoicesLimit = '10',
-      includeFlags = 'true',
     } = req.query as any;
 
     const filter: any = {};

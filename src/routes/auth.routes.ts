@@ -12,7 +12,6 @@ import { verifyRefreshToken, verifyToken } from '../middlewares/auth';
 import { allowRoles } from '../middlewares/roleGuard';
 import User from '../models/user.model';
 import { Request, Response } from 'express';
-import Plant from '@models/plant.model';
 
 const router = Router();
 

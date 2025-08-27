@@ -1,5 +1,4 @@
 import { Request, Response } from 'express';
-import fs from 'fs';
 import path from 'path';
 import { S3Service } from '@services/s3.service';
 import { InvoiceService } from '@services/invoice.service';
@@ -546,11 +545,9 @@ export class InvoiceController {
    */
   static async downloadPdf(req: Request, res: Response): Promise<void> {
     try {
-      const { id } = req.params;
       let invoice = await InvoiceService.getInvoiceById(req);
       // If path looks like local FS or missing, regenerate and upload
       if (!invoice.pdfPath || invoice.pdfPath.includes(path.sep)) {
-        const generated = await InvoiceService.generatePdf(req);
         invoice = await InvoiceService.getInvoiceById(req);
       }
       if (!invoice.pdfPath) {

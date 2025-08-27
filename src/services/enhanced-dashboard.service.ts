@@ -1,5 +1,4 @@
 import { Request } from 'express';
-import mongoose from 'mongoose';
 import Entry from '@models/entry.model';
 import Invoice from '@models/invoice.model';
 import Vendor from '@models/vendor.model';
