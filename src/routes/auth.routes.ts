@@ -12,6 +12,7 @@ import { verifyRefreshToken, verifyToken } from '../middlewares/auth';
 import { allowRoles } from '../middlewares/roleGuard';
 import User from '../models/user.model';
 import { Request, Response } from 'express';
+import Plant from '@models/plant.model';
 
 const router = Router();
 
@@ -185,6 +186,17 @@ router.post('/refresh', verifyRefreshToken, AuthController.refreshToken);
  */
 router.get('/profile', verifyToken, AuthController.getProfile);
 
+router.get('/users', verifyToken, allowRoles('admin'), async (req, res: Response) => {
+  try {
+    const users = await User.find().select('-password').populate('plantId', 'name');
+
+    res.json({ success: true, data: users, message: 'Users retrieved' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 // Admin - update user role/plant/status
 router.patch(
   '/users/:id',
@@ -211,5 +223,4 @@ router.patch(
     });
   },
 );
-
 export default router;
