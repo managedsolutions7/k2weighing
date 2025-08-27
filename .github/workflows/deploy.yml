@@ -18,7 +18,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: 18
+          node-version: 22
 
       # Configure AWS credentials (instead of apt-get awscli)
       - name: Configure AWS Credentials
