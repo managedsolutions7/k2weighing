@@ -1,0 +1,34 @@
+name: Deploy to Elastic Beanstalk
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Install AWS CLI
+        run: sudo apt-get install -y awscli
+
+      - name: Install EB CLI
+        run: pip install awsebcli --upgrade
+
+      - name: Deploy to EB
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: ap-south-1
+        run: |
+          eb init weighingapp-backend --region ap-south-1 --platform docker
+          eb use weighingapp-backend-env
+          eb deploy
