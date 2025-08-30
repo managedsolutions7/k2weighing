@@ -1,34 +1,60 @@
-name: Deploy to Elastic Beanstalk
+name: CI/CD - Deploy to Elastic Beanstalk
 
 on:
   push:
-    branches:
-      - main
+    branches: [ "main" ]
+  workflow_dispatch:
+
+env:
+  EB_APP_NAME: weighingappbe
+  EB_ENV_NAME: weighingappbe-prod
+  AWS_REGION: ap-south-1
 
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v3
+      - name: Use Node.js 22.x
+        uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 22.x
+          cache: 'npm'
 
-      - name: Configure AWS Credentials
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ap-south-1
+          aws-region: ${{ env.AWS_REGION }}
 
       - name: Install EB CLI
-        run: pip install --upgrade --user awsebcli
+        run: |
+          python3 -m pip install --upgrade pip
+          pip3 install awsebcli
+
+      - name: Initialize EB (idempotent)
+        run: |
+          eb init "$EB_APP_NAME" \
+            --platform "Node.js 22 running on 64bit Amazon Linux 2023" \
+            --region "$AWS_REGION" || true
+
+      - name: Select environment
+        run: eb use "$EB_ENV_NAME"
 
       - name: Deploy to Elastic Beanstalk
-        run: |
-          eb init weighingapp-backend --region ap-south-1 --platform "Node.js 22"
-          eb use weighingapp-backend-env
-          eb deploy
+        run: eb deploy "$EB_ENV_NAME" --staged --timeout 20
+
+      - name: Print environment status
+        run: eb status | sed -n '1,120p'
+
+

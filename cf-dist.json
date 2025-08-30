@@ -1,0 +1,40 @@
+{
+  "CallerReference": "weighingappbe-api-${DIST_CF}",
+  "Comment": "API distribution for weighingappbe-prod",
+  "Enabled": true,
+  "Origins": {
+    "Quantity": 1,
+    "Items": [
+      {
+        "Id": "eb-origin",
+        "DomainName": "weighingappbe-prod.eba-8t3s8zwt.ap-south-1.elasticbeanstalk.com",
+        "CustomOriginConfig": {
+          "HTTPPort": 80,
+          "HTTPSPort": 443,
+          "OriginProtocolPolicy": "http-only",
+          "OriginSslProtocols": { "Quantity": 3, "Items": ["TLSv1", "TLSv1.1", "TLSv1.2"] },
+          "OriginReadTimeout": 30,
+          "OriginKeepaliveTimeout": 5
+        }
+      }
+    ]
+  },
+  "DefaultCacheBehavior": {
+    "TargetOriginId": "eb-origin",
+    "ViewerProtocolPolicy": "redirect-to-https",
+    "AllowedMethods": {"Quantity": 7, "Items": ["GET","HEAD","OPTIONS","PUT","PATCH","POST","DELETE"], "CachedMethods": {"Quantity": 3, "Items": ["GET","HEAD","OPTIONS"]}},
+    "Compress": true,
+    "DefaultTTL": 0,
+    "MinTTL": 0,
+    "MaxTTL": 1,
+    "ForwardedValues": {
+      "QueryString": true,
+      "Cookies": {"Forward": "all"},
+      "Headers": {"Quantity": 1, "Items": ["*"]}
+    }
+  },
+  "PriceClass": "PriceClass_100",
+  "ViewerCertificate": { "CloudFrontDefaultCertificate": true },
+  "HttpVersion": "http2",
+  "IsIPV6Enabled": true
+}

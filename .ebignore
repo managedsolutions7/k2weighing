@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Development files
+tests/
+.vscode/
+.eslintrc.json
+.prettierrc
+.prettierignore
+eslint.config.js
+
+# Git files
+.git/
+.gitignore
+
+# Husky hooks
+.husky/
+
+# Logs
+*.log
+
+# Environment files
+.env
+.env.local
+.env.development
+.env.test
+
+# IDE files
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db

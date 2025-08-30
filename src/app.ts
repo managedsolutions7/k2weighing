@@ -14,6 +14,7 @@ import { zodErrorHandler } from './middlewares/zodErrorHandler';
 import errorHandler from '@middlewares/errorHandler';
 import { notFoundHandler } from '@middlewares/notFoundHandler';
 import cors from 'cors';
+import { env } from './config/env';
 
 const app = express();
 
@@ -21,11 +22,30 @@ app.use(express.json());
 
 app.use(
   cors({
-    origin: '*', // frontend URL
+    origin: env.ALLOWED_ORIGIN || '*',
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-    credentials: true, // if you want to allow cookies/auth headers
+    credentials: true,
   }),
 );
+
+// Health check endpoint for Elastic Beanstalk
+app.get('/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'OK', 
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+app.get('/', (req, res) => {
+  res.status(200).json({ 
+    message: 'Weighing App Backend API',
+    version: '1.0.0',
+    status: 'running'
+  });
+});
+
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/plants', plantRoutes);

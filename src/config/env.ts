@@ -17,6 +17,8 @@ const envSchema = z.object({
   S3_UPLOADS_BUCKET: z.string().optional(),
   S3_UPLOADS_PREFIX: z.string().optional(),
   S3_KMS_KEY_ID: z.string().optional(),
+  // CORS
+  ALLOWED_ORIGIN: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

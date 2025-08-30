@@ -546,19 +546,21 @@ export class InvoiceController {
   static async downloadPdf(req: Request, res: Response): Promise<void> {
     try {
       let invoice = await InvoiceService.getInvoiceById(req);
-      // If path looks like local FS or missing, regenerate and upload
-      if (!invoice.pdfPath || invoice.pdfPath.includes(path.sep)) {
-        invoice = await InvoiceService.getInvoiceById(req);
+
+      // If pdfPath is missing, generate PDF
+      if (!invoice.pdfPath) {
+        await InvoiceService.generatePdf(req);
+        invoice = await InvoiceService.getInvoiceById(req); // reload with new pdfPath
       }
+
       if (!invoice.pdfPath) {
         throw new CustomError('PDF not generated for this invoice', 500);
       }
+
       const url = await S3Service.getPresignedGetUrl(invoice.pdfPath as string);
       res.status(200).json({
         success: true,
-        data: {
-          url,
-        },
+        data: { url },
         message: 'PDF file retrieved successfully',
       });
     } catch (error) {
