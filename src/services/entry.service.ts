@@ -11,19 +11,21 @@ import {
 import CustomError from '../utils/customError';
 import logger from '../utils/logger';
 import { PaginationDefaults } from '../constants';
-import { CacheService } from './cache.service';
-import {
-  ENTRIES_CACHE_TTL,
-  ENTRIES_LIST_KEY,
-  ENTRY_BY_ID_CACHE_TTL,
-  ENTRY_BY_ID_KEY,
-  serializeFilters,
-} from '@constants/cache.constants';
+// Removed cache imports as caching is disabled for entries
 import Vehicle from '@models/vehicle.model';
 import { VARIANCE_TOLERANCE } from '@constants/variance.constants';
 import { S3Service } from './s3.service';
 
 export class EntryService {
+  /**
+   * Format date to DD-MMM-YYYY format
+   */
+  private static formatDate(date: Date): string {
+    const day = date.getDate().toString().padStart(2, '0');
+    const month = date.toLocaleString('default', { month: 'short' }).toUpperCase();
+    const year = date.getFullYear();
+    return `${day}-${month}-${year}`;
+  }
   /**
    * Create a new entry
    */
@@ -130,6 +132,8 @@ export class EntryService {
         manualWeight: Boolean(entryData.manualWeight),
         driverName: entryData.driverName,
         driverPhone: entryData.driverPhone,
+        // Store initial entry weight for audit purposes
+        initialEntryWeight: entryData.entryWeight,
         // Additional handling for sale packed weight will be handled in model pre-save
       });
 
@@ -137,10 +141,6 @@ export class EntryService {
       (entry as any).exitWeight = null;
 
       const savedEntry = await entry.save();
-      // Invalidate dependent caches
-      await (EntryService as unknown as IEntryServiceWithInvalidation).invalidateCachesOnMutation(
-        savedEntry._id.toString(),
-      );
       logger.info(`Entry created: ${savedEntry._id} by user: ${userId}`);
       return savedEntry;
     } catch (error) {
@@ -263,13 +263,17 @@ export class EntryService {
     entry.expectedWeight = expectedWeight;
     entry.exactWeight = exactWeight;
     entry.varianceFlag = varianceFlag;
+    
+    // Store initial exit weight for audit purposes (only if not already set)
+    if (!entry.initialExitWeight) {
+      (entry as any).initialExitWeight = exitWeight;
+    }
 
     const updated = await entry.save();
 
-    // Recalculate invoices that include this entry before invalidating caches
+    // Recalculate invoices that include this entry
     await EntryService.recalculateInvoicesForEntry(updated._id);
 
-    await (EntryService as unknown as IEntryServiceWithInvalidation).invalidateCachesOnMutation(id);
     logger.info(`Exit weight updated for entry: ${id}`);
     return updated as any;
   }
@@ -302,7 +306,6 @@ export class EntryService {
     (entry as any).reviewNotes = reviewNotes ?? null;
     (entry as any).updatedBy = reviewerId as any;
     const updated = await entry.save();
-    await (EntryService as unknown as IEntryServiceWithInvalidation).invalidateCachesOnMutation(id);
     return updated as any;
   }
 
@@ -318,7 +321,6 @@ export class EntryService {
     entry.flagReason = entry.flagged ? (flagReason ?? null) : null;
     (entry as any).updatedBy = (req as any).user?.id;
     const updated = await entry.save();
-    await (EntryService as unknown as IEntryServiceWithInvalidation).invalidateCachesOnMutation(id);
     return updated as any;
   }
 
@@ -459,32 +461,16 @@ export class EntryService {
       const total = await Entry.countDocuments(filter);
       const totalPages = Math.ceil(total / Number(limit));
 
-      const filterString = serializeFilters({
-        entryType,
-        vendor,
-        plant,
-        startDate,
-        endDate,
-        isActive,
-        flagged,
-        isReviewed,
-        page,
-        limit,
-        q, // <-- add this
-      });
-      const cacheKey = ENTRIES_LIST_KEY(filterString);
-      const entries = await CacheService.getOrSet<any[]>(cacheKey, ENTRIES_CACHE_TTL, async () => {
-        const data = await Entry.find(filter)
-          .populate('vendor', 'name code contactPerson')
-          .populate('vehicle', 'vehicleNumber vehicleType driverName')
-          .populate('plant', 'name code')
-          .populate('materialType', 'name')
-          .populate('createdBy', 'name username')
-          .sort({ entryDate: -1, createdAt: -1 })
-          .skip(skip)
-          .limit(Number(limit));
-        return data as any[];
-      });
+      // Remove caching to fix operator seeing supervisor data issue
+      const entries = await Entry.find(filter)
+        .populate('vendor', 'name code contactPerson')
+        .populate('vehicle', 'vehicleNumber vehicleType driverName')
+        .populate('plant', 'name code')
+        .populate('materialType', 'name')
+        .populate('createdBy', 'name username')
+        .sort({ entryDate: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(Number(limit));
 
       logger.info(`Retrieved ${entries.length} entries out of ${total}`);
       return {
@@ -506,20 +492,13 @@ export class EntryService {
   static async getEntryById(req: Request): Promise<EntryWithRelations> {
     try {
       const { id } = req.params;
-      const cacheKey = ENTRY_BY_ID_KEY(id);
-      const entry = await CacheService.getOrSet<any | null>(
-        cacheKey,
-        ENTRY_BY_ID_CACHE_TTL,
-        async () => {
-          const data = await Entry.findById(id)
-            .populate('vendor', 'name code contactPerson')
-            .populate('vehicle', 'vehicleNumber vehicleType driverName')
-            .populate('plant', 'name code')
-            .populate('materialType', 'name')
-            .populate('createdBy', 'name username');
-          return (data as any) || null;
-        },
-      );
+      // Remove caching to fix operator seeing supervisor data issue
+      const entry = await Entry.findById(id)
+        .populate('vendor', 'name code contactPerson')
+        .populate('vehicle', 'vehicleNumber vehicleType driverName')
+        .populate('plant', 'name code')
+        .populate('materialType', 'name')
+        .populate('createdBy', 'name username');
 
       if (!entry) {
         throw new CustomError('Entry not found', 404);
@@ -542,8 +521,9 @@ export class EntryService {
       const updateData: UpdateEntryRequest = req.body;
 
       // Vehicle can be updated to any type; only ensure it exists
-      const vehicle = await Entry.db.models.Vehicle.findById(updateData.vehicle);
+      let vehicle = null;
       if (updateData.vehicle) {
+        vehicle = await Entry.db.models.Vehicle.findById(updateData.vehicle);
         if (!vehicle) {
           throw new CustomError('Vehicle not found', 404);
         }
@@ -661,27 +641,23 @@ export class EntryService {
         updates.quantity = recomputedExact;
       }
 
-      // --- Add this block to recompute expectedWeight and varianceFlag ---
+      // --- Recompute expectedWeight and varianceFlag ---
       let expectedWeight: number | null = entry.expectedWeight ?? null;
-      if (entry.entryType === 'purchase' && entry.vehicle) {
-        // For purchase, expected = entryWeight - vehicle.tareWeight
-        if (
-          vehicle &&
-          typeof effectiveEntry === 'number' &&
-          typeof vehicle.tareWeight === 'number'
-        ) {
-          expectedWeight = effectiveEntry - vehicle.tareWeight;
+      
+      // Get vehicle data for expected weight calculation
+      let vehicleForCalculation = vehicle;
+      if (!vehicleForCalculation && entry.vehicle) {
+        vehicleForCalculation = await Vehicle.findById(entry.vehicle);
+      }
+      
+      if (vehicleForCalculation && vehicleForCalculation.tareWeight != null) {
+        if (entry.entryType === 'purchase' && typeof effectiveEntry === 'number') {
+          // For purchase, expected = entryWeight - vehicle.tareWeight
+          expectedWeight = effectiveEntry - vehicleForCalculation.tareWeight;
           updates.expectedWeight = expectedWeight;
-        }
-      } else if (entry.entryType === 'sale' && entry.vehicle) {
-        // For sale, expected = exitWeight - vehicle.tareWeight
-        const vehicle = await Vehicle.findById(entry.vehicle);
-        if (
-          vehicle &&
-          typeof effectiveExit === 'number' &&
-          typeof vehicle.tareWeight === 'number'
-        ) {
-          expectedWeight = effectiveExit - vehicle.tareWeight;
+        } else if (entry.entryType === 'sale' && typeof effectiveExit === 'number') {
+          // For sale, expected = exitWeight - vehicle.tareWeight
+          expectedWeight = effectiveExit - vehicleForCalculation.tareWeight;
           updates.expectedWeight = expectedWeight;
         }
       }
@@ -720,9 +696,6 @@ export class EntryService {
       if (!updatedEntry) throw new CustomError('Entry not found', 404);
 
       logger.info(`Entry updated: ${id}`);
-      await (EntryService as unknown as IEntryServiceWithInvalidation).invalidateCachesOnMutation(
-        id,
-      );
       return updatedEntry;
     } catch (error) {
       logger.error('Error updating entry:', error);
@@ -743,9 +716,6 @@ export class EntryService {
       }
 
       logger.info(`Entry deleted: ${id}`);
-      await (EntryService as unknown as IEntryServiceWithInvalidation).invalidateCachesOnMutation(
-        id,
-      );
       return { message: 'Entry deleted successfully' };
     } catch (error) {
       logger.error('Error deleting entry:', error);
@@ -831,7 +801,7 @@ export class EntryService {
       const entryDetails: [string, any][] = [
         ['Entry Number', entry.entryNumber],
         ['Entry Type', entry.entryType],
-        ['Date', new Date(entry.entryDate).toLocaleString()],
+        ['Date', this.formatDate(new Date(entry.entryDate))],
       ];
 
       entryDetails.forEach(([label, value]) => {
@@ -964,7 +934,7 @@ export class EntryService {
         .fontSize(9)
         .fillColor('#7F8C8D')
         .text('Generated by Biofuel Management System', { align: 'center' });
-      doc.text(`Generated on: ${new Date().toLocaleString()}`, {
+      doc.text(`Generated on: ${this.formatDate(new Date())}`, {
         align: 'center',
       });
 
@@ -973,21 +943,4 @@ export class EntryService {
   }
 }
 
-// Helper invalidation for entries and reports dependent on entries
-// Using ES module style only; removed namespace per lint suggestion
-
-export type IEntryServiceWithInvalidation = typeof EntryService & {
-  invalidateCachesOnMutation: (id: string) => Promise<void>;
-};
-
-const entryServiceWithInvalidation: IEntryServiceWithInvalidation = Object.assign(EntryService, {
-  async invalidateCachesOnMutation(id: string): Promise<void> {
-    // Include version prefix in patterns
-    await CacheService.delByPattern('v1:entries:list:*');
-    await CacheService.del(ENTRY_BY_ID_KEY(id));
-    await CacheService.delByPattern('v1:reports:*');
-    await CacheService.delByPattern('v1:dashboard:*');
-  },
-});
-
-export const EntryServiceWithInvalidation = entryServiceWithInvalidation;
+// Cache invalidation removed as caching is disabled for entries

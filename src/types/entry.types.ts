@@ -19,6 +19,9 @@ export interface IEntry {
   updatedAt: Date;
   entryWeight?: number;
   exitWeight?: number;
+  // Store initial values for audit purposes
+  initialEntryWeight?: number;
+  initialExitWeight?: number;
   expectedWeight?: number | null;
   exactWeight?: number | null;
   varianceFlag?: boolean | null;
@@ -146,4 +149,35 @@ export interface EntryWithRelations {
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
+  // Weight fields
+  entryWeight?: number;
+  exitWeight?: number;
+  initialEntryWeight?: number;
+  initialExitWeight?: number;
+  expectedWeight?: number | null;
+  exactWeight?: number | null;
+  varianceFlag?: boolean | null;
+  // Quality/deductions
+  moisture?: number;
+  dust?: number;
+  moistureWeight?: number;
+  dustWeight?: number;
+  finalWeight?: number;
+  // Review/flag workflow
+  isReviewed?: boolean;
+  reviewedBy?: mongoose.Types.ObjectId | null;
+  reviewedAt?: Date | null;
+  reviewNotes?: string | null;
+  flagged?: boolean;
+  flagReason?: string | null;
+  // Manual weight entry marker
+  manualWeight?: boolean;
+  // New sale/purchase fields
+  palletteType?: 'loose' | 'packed';
+  noOfBags?: number;
+  weightPerBag?: number;
+  packedWeight?: number;
+  materialType?: mongoose.Types.ObjectId;
+  driverName?: string;
+  driverPhone?: string;
 }

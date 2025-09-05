@@ -36,6 +36,9 @@ const entrySchema = new Schema<IEntry>(
     },
     entryWeight: { type: Number, required: true, min: 0 },
     exitWeight: { type: Number, required: false, min: 0 },
+    // Store initial values for audit purposes
+    initialEntryWeight: { type: Number, required: false, min: 0 },
+    initialExitWeight: { type: Number, required: false, min: 0 },
     expectedWeight: { type: Number, required: false },
     exactWeight: { type: Number, required: false },
     varianceFlag: { type: Boolean, required: false, default: null },
