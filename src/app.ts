@@ -30,19 +30,19 @@ app.use(
 
 // Health check endpoint for Elastic Beanstalk
 app.get('/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'OK', 
+  res.status(200).json({
+    status: 'OK',
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
   });
 });
 
 app.get('/', (req, res) => {
-  res.status(200).json({ 
+  res.status(200).json({
     message: 'Weighing App Backend API',
     version: '1.0.0',
-    status: 'running'
+    status: 'running',
   });
 });
 

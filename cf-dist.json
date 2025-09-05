@@ -22,15 +22,19 @@
   "DefaultCacheBehavior": {
     "TargetOriginId": "eb-origin",
     "ViewerProtocolPolicy": "redirect-to-https",
-    "AllowedMethods": {"Quantity": 7, "Items": ["GET","HEAD","OPTIONS","PUT","PATCH","POST","DELETE"], "CachedMethods": {"Quantity": 3, "Items": ["GET","HEAD","OPTIONS"]}},
+    "AllowedMethods": {
+      "Quantity": 7,
+      "Items": ["GET", "HEAD", "OPTIONS", "PUT", "PATCH", "POST", "DELETE"],
+      "CachedMethods": { "Quantity": 3, "Items": ["GET", "HEAD", "OPTIONS"] }
+    },
     "Compress": true,
     "DefaultTTL": 0,
     "MinTTL": 0,
     "MaxTTL": 1,
     "ForwardedValues": {
       "QueryString": true,
-      "Cookies": {"Forward": "all"},
-      "Headers": {"Quantity": 1, "Items": ["*"]}
+      "Cookies": { "Forward": "all" },
+      "Headers": { "Quantity": 1, "Items": ["*"] }
     }
   },
   "PriceClass": "PriceClass_100",

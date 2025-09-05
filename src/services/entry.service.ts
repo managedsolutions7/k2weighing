@@ -263,7 +263,7 @@ export class EntryService {
     entry.expectedWeight = expectedWeight;
     entry.exactWeight = exactWeight;
     entry.varianceFlag = varianceFlag;
-    
+
     // Store initial exit weight for audit purposes (only if not already set)
     if (!entry.initialExitWeight) {
       (entry as any).initialExitWeight = exitWeight;
@@ -643,13 +643,13 @@ export class EntryService {
 
       // --- Recompute expectedWeight and varianceFlag ---
       let expectedWeight: number | null = entry.expectedWeight ?? null;
-      
+
       // Get vehicle data for expected weight calculation
       let vehicleForCalculation = vehicle;
       if (!vehicleForCalculation && entry.vehicle) {
         vehicleForCalculation = await Vehicle.findById(entry.vehicle);
       }
-      
+
       if (vehicleForCalculation && vehicleForCalculation.tareWeight != null) {
         if (entry.entryType === 'purchase' && typeof effectiveEntry === 'number') {
           // For purchase, expected = entryWeight - vehicle.tareWeight

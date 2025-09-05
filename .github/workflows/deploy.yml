@@ -2,7 +2,7 @@ name: CI/CD - Deploy to Elastic Beanstalk
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ['main']
   workflow_dispatch:
 
 env:
@@ -56,5 +56,3 @@ jobs:
 
       - name: Print environment status
         run: eb status | sed -n '1,120p'
-
-

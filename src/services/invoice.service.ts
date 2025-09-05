@@ -464,10 +464,14 @@ export class InvoiceService {
   /**
    * Check if there's enough space on current page and add new page if needed
    */
-  private static checkPageBreak(doc: PDFKit.PDFDocument, currentY: number, requiredSpace: number): number {
+  private static checkPageBreak(
+    doc: PDFKit.PDFDocument,
+    currentY: number,
+    requiredSpace: number,
+  ): number {
     const pageHeight = 841.89; // A4 height in points
     const margin = 40;
-    
+
     if (currentY + requiredSpace > pageHeight - margin) {
       doc.addPage();
       return margin + 20; // Return new Y position after page break
@@ -715,7 +719,7 @@ export class InvoiceService {
 
     // Check if there's enough space for the summary section
     currentY = this.checkPageBreak(doc, currentY, 100);
-    
+
     // Summary section
     const summaryY = currentY;
     doc.rect(margin, summaryY, boxWidth, 50).stroke('#3498db');
@@ -930,7 +934,7 @@ export class InvoiceService {
       start.setHours(0, 0, 0, 0); // Start of day
       const end = new Date(endDate);
       end.setHours(23, 59, 59, 999); // End of day
-      
+
       const entries = await Invoice.db.models.Entry.find({
         vendor,
         plant,
