@@ -6,14 +6,11 @@ export const createVehicleSchema = z.object({
     vehicleNumber: z
       .string()
       .min(1, ValidationMessages.REQUIRED)
-      .max(20, 'Vehicle number too long'),
-    vehicleType: z.enum(['buy', 'sell'] as const),
-    capacity: z.number().positive('Capacity must be positive').max(100000, 'Capacity too high'),
-    tareWeight: z
-      .number()
-      .positive('Tare weight must be positive')
-      .max(100000, 'Tare too high')
+      .max(20, 'Vehicle number too long')
       .optional(),
+    vehicleType: z.enum(['buy', 'sell'] as const),
+    capacity: z.number().positive('Capacity must be positive').optional(),
+    tareWeight: z.number().positive('Tare weight must be positive').max(100000, 'Tare too high'),
     driverName: z
       .string()
       .min(1, ValidationMessages.REQUIRED)

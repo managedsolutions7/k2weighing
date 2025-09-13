@@ -26,10 +26,10 @@ export class VehicleService {
       const vehicleData: CreateVehicleRequest = req.body;
 
       // Check if vehicle number already exists
-      const existingVehicle = await Vehicle.findOne({ vehicleNumber: vehicleData.vehicleNumber });
-      if (existingVehicle) {
-        throw new CustomError('Vehicle number already exists', 400);
-      }
+      // const existingVehicle = await Vehicle.findOne({ vehicleNumber: vehicleData.vehicleNumber });
+      // if (existingVehicle) {
+      //   throw new CustomError('Vehicle number already exists', 400);
+      // }
 
       const vehicle = new Vehicle(vehicleData);
       const savedVehicle = await vehicle.save();

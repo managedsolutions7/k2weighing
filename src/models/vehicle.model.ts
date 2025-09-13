@@ -5,10 +5,10 @@ import Counter from './counter.model';
 const vehicleSchema = new Schema<IVehicle>(
   {
     vehicleCode: { type: String, required: true, unique: true },
-    vehicleNumber: { type: String, required: true, unique: true },
+    vehicleNumber: { type: String, required: false },
     // Allow both types but do not restrict usage by flow
     vehicleType: { type: String, enum: ['buy', 'sell'] },
-    capacity: { type: Number, required: true },
+    capacity: { type: Number, required: false },
     tareWeight: { type: Number, required: false },
     driverName: { type: String, required: true },
     driverPhone: { type: String, required: true },
@@ -18,6 +18,7 @@ const vehicleSchema = new Schema<IVehicle>(
 );
 
 // No manual schema.index for vehicleCode to avoid duplicate with unique on path
+vehicleSchema.index({ vehicleNumber: 1, vehicleType: 1 }, { unique: true });
 
 // Auto-generate vehicleCode (VEH-YYYY-XXXX)
 vehicleSchema.pre('validate', async function (next) {
@@ -25,6 +26,7 @@ vehicleSchema.pre('validate', async function (next) {
     if (this.isNew && !(this as any).vehicleCode) {
       const year = new Date().getFullYear();
       const counterKey = `VEH-${year}`;
+
       const ctr = await Counter.findOneAndUpdate(
         { key: counterKey },
         { $inc: { seq: 1 } },
