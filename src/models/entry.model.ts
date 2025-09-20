@@ -101,6 +101,11 @@ const entrySchema = new Schema<IEntry>(
         return this.entryType === 'purchase';
       },
     },
+    // PDF receipt path
+    pdfPath: {
+      type: String,
+      required: false,
+    },
   },
   { timestamps: true },
 );

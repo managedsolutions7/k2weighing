@@ -8,6 +8,8 @@ const envSchema = z.object({
   REDIS_URL: z.url(),
   JWT_SECRET: z.string().min(10),
   INVOICE_SIGNATURE_SECRET: z.string().min(32).optional(),
+  INVOICE_PDF_ENGINE: z.enum(['pdfkit', 'html']).optional().default('pdfkit'),
+  ENTRY_PDF_ENGINE: z.enum(['pdfkit', 'html']).optional().default('pdfkit'),
   CACHE_LOGGING: z
     .string()
     .optional()

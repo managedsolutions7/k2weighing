@@ -18,6 +18,12 @@ export interface IInvoice {
   };
   totalQuantity: number;
   totalAmount: number;
+  finalAmount?: number;
+  // GST (optional)
+  gstApplicable?: boolean;
+  gstType?: 'IGST' | 'CGST_SGST' | null;
+  gstRate?: number | null;
+  gstAmounts?: { cgst: number; sgst: number; igst: number };
   // For purchase invoices - material-wise breakdown
   materialBreakdown?: Array<{
     materialType: mongoose.Types.ObjectId;
@@ -61,12 +67,20 @@ export interface CreateInvoiceRequest {
   };
   invoiceDate?: string;
   dueDate?: string;
+  // GST (optional inputs)
+  gstApplicable?: boolean;
+  gstType?: 'IGST' | 'CGST_SGST' | null;
+  gstRate?: number | null;
 }
 
 export interface UpdateInvoiceRequest {
   status?: 'draft' | 'sent' | 'paid' | 'overdue';
   dueDate?: string;
   isActive?: boolean;
+  // GST (allow updating if needed)
+  gstApplicable?: boolean;
+  gstType?: 'IGST' | 'CGST_SGST' | null;
+  gstRate?: string | number | null;
 }
 
 export interface InvoiceWithRelations {
@@ -125,6 +139,12 @@ export interface InvoiceWithRelations {
   };
   totalQuantity: number;
   totalAmount: number;
+  finalAmount?: number;
+  // GST (read-model)
+  gstApplicable?: boolean;
+  gstType?: 'IGST' | 'CGST_SGST' | null;
+  gstRate?: number | null;
+  gstAmounts?: { cgst: number; sgst: number; igst: number };
   materialBreakdown?: Array<{
     materialType: mongoose.Types.ObjectId;
     materialName: string;

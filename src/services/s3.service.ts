@@ -1,4 +1,10 @@
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client,
+  PutObjectCommand,
+  GetObjectCommand,
+  HeadObjectCommand,
+  DeleteObjectCommand,
+} from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { env } from '@config/env';
 
@@ -54,5 +60,23 @@ export class S3Service {
     const cmd = new GetObjectCommand(params);
 
     return getSignedUrl(s3, cmd, { expiresIn: expiresInSeconds });
+  }
+
+  static async headObject(key: string): Promise<any> {
+    const params = {
+      Bucket: this.getUploadsBucket(),
+      Key: key,
+    };
+    const cmd = new HeadObjectCommand(params);
+    return await s3.send(cmd);
+  }
+
+  static async deleteObject(key: string): Promise<void> {
+    const params = {
+      Bucket: this.getUploadsBucket(),
+      Key: key,
+    };
+    const cmd = new DeleteObjectCommand(params);
+    await s3.send(cmd);
   }
 }

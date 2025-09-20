@@ -4,12 +4,12 @@ export interface IVendor {
   _id: mongoose.Types.ObjectId;
   vendorNumber: string;
   name: string;
-  code: string;
+  code?: string;
   contactPerson: string;
   phone: string;
-  email: string;
+  email?: string;
   address: string;
-  gstNumber: string;
+  gstNumber?: string;
   linkedPlants: mongoose.Types.ObjectId[];
   isActive: boolean;
   createdAt: Date;
@@ -21,9 +21,9 @@ export interface CreateVendorRequest {
   code: string;
   contactPerson: string;
   phone: string;
-  email: string;
+  email?: string;
   address: string;
-  gstNumber: string;
+  gstNumber?: string;
   linkedPlants: string[];
 }
 

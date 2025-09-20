@@ -48,6 +48,8 @@ export interface IEntry {
   moistureWeight?: number;
   dustWeight?: number;
   finalWeight?: number;
+  // PDF receipt path
+  pdfPath?: string;
 }
 
 export interface CreateEntryRequest {
@@ -180,4 +182,6 @@ export interface EntryWithRelations {
   materialType?: mongoose.Types.ObjectId;
   driverName?: string;
   driverPhone?: string;
+  // PDF receipt path
+  pdfPath?: string;
 }

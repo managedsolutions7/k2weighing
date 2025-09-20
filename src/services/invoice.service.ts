@@ -14,6 +14,10 @@ import CustomError from '../utils/customError';
 import logger from '../utils/logger';
 import { PaginationDefaults } from '../constants';
 import mongoose from 'mongoose';
+import { calculateGST } from './gst.util';
+import { HtmlPdfService } from './html-pdf.service';
+import { PdfManagerService } from './pdf-manager.service';
+import { env } from '../config/env';
 
 export class InvoiceService {
   /**
@@ -70,6 +74,17 @@ export class InvoiceService {
         const entryNumbers = flaggedEntries.map((e: any) => e.entryNumber).join(', ');
         throw new CustomError(
           `Cannot create invoice. The following entries are flagged and need to be unflagged first: ${entryNumbers}`,
+          400,
+        );
+      }
+
+      // Check for entries without exit weight
+      const entriesWithoutExitWeight = entries.filter((entry: any) => !entry.exitWeight);
+
+      if (entriesWithoutExitWeight.length > 0) {
+        const entryNumbers = entriesWithoutExitWeight.map((e: any) => e.entryNumber).join(', ');
+        throw new CustomError(
+          `Cannot create invoice. The following entries do not have exit weight: ${entryNumbers}`,
           400,
         );
       }
@@ -188,6 +203,30 @@ export class InvoiceService {
         };
       }
 
+      // Calculate GST amounts
+      const gstApplicable = Boolean((invoiceData as any).gstApplicable);
+      const gstType = gstApplicable ? ((invoiceData as any).gstType ?? null) : null;
+      const gstRate = gstApplicable ? ((invoiceData as any).gstRate ?? null) : null;
+
+      const gstAmounts = (() => {
+        const taxableAmount = totalAmount;
+        const { cgst, sgst, igst } = calculateGST({
+          taxableAmount,
+          gstApplicable,
+          gstType,
+          gstRate,
+        });
+        return { cgst, sgst, igst };
+      })();
+
+      // Calculate final amount (totalAmount + GST)
+      const finalAmount = totalAmount + (gstAmounts.cgst + gstAmounts.sgst + gstAmounts.igst);
+
+      // Debug log for GST
+      logger.info(
+        `Invoice GST details: applicable=${gstApplicable}, type=${gstType}, rate=${gstRate}, amounts=${JSON.stringify(gstAmounts)}`,
+      );
+
       const invoice = new Invoice({
         vendor: invoiceData.vendor,
         plant: invoiceData.plant,
@@ -199,6 +238,12 @@ export class InvoiceService {
         paletteRates: invoiceData.paletteRates,
         totalQuantity,
         totalAmount,
+        finalAmount,
+        // GST fields (optional, non-breaking)
+        gstApplicable,
+        gstType,
+        gstRate,
+        gstAmounts,
         materialBreakdown,
         paletteBreakdown,
         invoiceDate: invoiceData.invoiceDate ? new Date(invoiceData.invoiceDate) : new Date(),
@@ -345,6 +390,9 @@ export class InvoiceService {
         throw new CustomError('Invoice not found', 404);
       }
 
+      // Invalidate PDF when invoice data changes
+      await PdfManagerService.invalidateInvoicePdf(id);
+
       logger.info(`Invoice updated: ${id}`);
       return updatedInvoice;
     } catch (error) {
@@ -363,6 +411,11 @@ export class InvoiceService {
 
       if (!invoice) {
         throw new CustomError('Invoice not found', 404);
+      }
+
+      // Clean up PDF when invoice is deleted
+      if (invoice.pdfPath) {
+        await PdfManagerService.deletePdf(invoice.pdfPath);
       }
 
       logger.info(`Invoice deleted: ${id}`);
@@ -395,6 +448,40 @@ export class InvoiceService {
         throw new CustomError('Invoice not found', 404);
       }
 
+      // Check if PDF already exists and is valid
+      if (invoice.pdfPath) {
+        try {
+          // Verify PDF exists in S3
+          await S3Service.headObject(invoice.pdfPath);
+          logger.info(`Using existing PDF for invoice: ${invoice.invoiceNumber}`);
+          return {
+            pdfPath: invoice.pdfPath,
+            downloadUrl: `/api/invoices/${id}/download`,
+          };
+        } catch (error) {
+          // PDF doesn't exist in S3, clear the path and generate new one
+          logger.warn(
+            `PDF not found in S3 for invoice ${invoice.invoiceNumber}, generating new one`,
+          );
+          await Invoice.findByIdAndUpdate(id, { pdfPath: null });
+        }
+      }
+
+      // Check if HTML PDF engine is enabled
+      const useHtmlEngine = env.INVOICE_PDF_ENGINE === 'html';
+
+      if (useHtmlEngine) {
+        logger.info('Using HTML PDF engine for invoice generation');
+        const result = await HtmlPdfService.generateInvoicePdf(invoice as any);
+
+        // Update invoice with new PDF path using PDF manager
+        await PdfManagerService.updateInvoicePdf(id, result.pdfPath, invoice.pdfPath);
+
+        return result;
+      }
+
+      // Use original PDFKit engine
+      logger.info('Using PDFKit engine for invoice generation');
       const doc = new PDFDocument({ margin: 40, size: 'A4' });
       const chunks: Buffer[] = [];
       doc.on('data', (c) => chunks.push(c as Buffer));
@@ -411,7 +498,10 @@ export class InvoiceService {
             const buffer = Buffer.concat(chunks);
             const key = S3Service.buildKey(['invoices', `${invoice.invoiceNumber}.pdf`]);
             await S3Service.putObject(key, buffer, 'application/pdf');
-            await Invoice.findByIdAndUpdate(id, { pdfPath: key });
+
+            // Update invoice with new PDF path using PDF manager
+            await PdfManagerService.updateInvoicePdf(id, key, invoice.pdfPath);
+
             const downloadUrl = `/api/invoices/${id}/download`;
             logger.info(`PDF generated and uploaded for invoice: ${invoice.invoiceNumber}`);
             resolve({ pdfPath: key, downloadUrl });
@@ -729,7 +819,70 @@ export class InvoiceService {
       .text('SUMMARY', margin + 10, summaryY + 8);
     doc.fontSize(8).font('Helvetica');
     doc.text(`Total Quantity: ${invoice.totalQuantity.toFixed(2)} kg`, margin + 10, summaryY + 22);
-    doc.text(`Total Amount: ₹${invoice.totalAmount.toFixed(2)}`, margin + 10, summaryY + 34);
+    doc.text(`Subtotal: ₹${invoice.totalAmount.toFixed(2)}`, margin + 10, summaryY + 34);
+
+    // GST Breakdown (conditional) - Make it more prominent
+    let payableAmount = invoice.totalAmount;
+    let gstDetails = null;
+
+    // Check if GST is applicable and calculate
+    logger.info(
+      `PDF GST check: applicable=${invoice.gstApplicable}, type=${invoice.gstType}, rate=${invoice.gstRate}, totalAmount=${invoice.totalAmount}`,
+    );
+
+    if (invoice.gstApplicable && invoice.gstRate && invoice.gstType) {
+      gstDetails = calculateGST({
+        taxableAmount: invoice.totalAmount,
+        gstApplicable: invoice.gstApplicable,
+        gstType: invoice.gstType,
+        gstRate: invoice.gstRate,
+      });
+      payableAmount = gstDetails.grandTotal;
+      logger.info(`GST calculated: ${JSON.stringify(gstDetails)}`);
+    } else {
+      logger.info('GST not applicable or missing required fields');
+    }
+
+    // GST Box (right side of summary)
+    const gstBoxY = summaryY;
+    const gstBoxX = margin + boxWidth + 20;
+
+    if (gstDetails) {
+      // GST box with purple border
+      doc.rect(gstBoxX, gstBoxY, boxWidth, 50).stroke('#8e44ad');
+      doc.fillColor('#8e44ad');
+      doc
+        .fontSize(10)
+        .font('Helvetica-Bold')
+        .text('GST BREAKDOWN', gstBoxX + 10, gstBoxY + 8);
+      doc.fillColor('#000000');
+      doc.fontSize(8).font('Helvetica');
+
+      if (invoice.gstType === 'CGST_SGST') {
+        doc.text(
+          `CGST (${(invoice.gstRate / 2).toFixed(2)}%): ₹${gstDetails.cgst.toFixed(2)}`,
+          gstBoxX + 10,
+          gstBoxY + 22,
+        );
+        doc.text(
+          `SGST (${(invoice.gstRate / 2).toFixed(2)}%): ₹${gstDetails.sgst.toFixed(2)}`,
+          gstBoxX + 10,
+          gstBoxY + 34,
+        );
+      } else if (invoice.gstType === 'IGST') {
+        doc.text(
+          `IGST (${invoice.gstRate.toFixed(2)}%): ₹${gstDetails.igst.toFixed(2)}`,
+          gstBoxX + 10,
+          gstBoxY + 22,
+        );
+      }
+    } else {
+      // No GST box - just empty space
+      doc.rect(gstBoxX, gstBoxY, boxWidth, 50).stroke('#bdc3c7');
+      doc.fontSize(8).font('Helvetica').fillColor('#7f8c8d');
+      doc.text('No GST Applied', gstBoxX + 10, gstBoxY + 20);
+      doc.fillColor('#000000');
+    }
 
     // Final Amount Box
     const finalAmountX = margin + boxWidth + 20;
@@ -741,7 +894,7 @@ export class InvoiceService {
       .text('FINAL AMOUNT', finalAmountX + boxWidth / 2, summaryY + 8, { align: 'center' });
     doc
       .fontSize(16)
-      .text(`₹${invoice.totalAmount.toFixed(2)}`, finalAmountX + boxWidth / 2, summaryY + 25, {
+      .text(`₹${payableAmount.toFixed(2)}`, finalAmountX + boxWidth / 2, summaryY + 25, {
         align: 'center',
       });
     doc.fillColor('#000000');
@@ -966,6 +1119,17 @@ export class InvoiceService {
         );
       }
 
+      // Check for entries without exit weight
+      const entriesWithoutExitWeight = entries.filter((entry: any) => !entry.exitWeight);
+
+      if (entriesWithoutExitWeight.length > 0) {
+        const entryNumbers = entriesWithoutExitWeight.map((e: any) => e.entryNumber).join(', ');
+        throw new CustomError(
+          `Cannot create invoice. The following entries do not have exit weight: ${entryNumbers}`,
+          400,
+        );
+      }
+
       let totalQuantity = 0;
       let totalAmount = 0;
       let materialBreakdown: any[] = [];
@@ -1108,6 +1272,33 @@ export class InvoiceService {
         paletteRates: paletteRates,
         totalQuantity,
         totalAmount,
+        finalAmount: (() => {
+          const gstAmounts = (() => {
+            const taxableAmount = totalAmount;
+            const { cgst, sgst, igst } = calculateGST({
+              taxableAmount,
+              gstApplicable: Boolean((req.body as any).gstApplicable),
+              gstType: (req.body as any).gstType ?? null,
+              gstRate: (req.body as any).gstRate ?? null,
+            });
+            return { cgst, sgst, igst };
+          })();
+          return totalAmount + (gstAmounts.cgst + gstAmounts.sgst + gstAmounts.igst);
+        })(),
+        // GST fields (optional)
+        gstApplicable: Boolean((req.body as any).gstApplicable),
+        gstType: (req.body as any).gstApplicable ? ((req.body as any).gstType ?? null) : null,
+        gstRate: (req.body as any).gstApplicable ? ((req.body as any).gstRate ?? null) : null,
+        gstAmounts: (() => {
+          const taxableAmount = totalAmount;
+          const { cgst, sgst, igst } = calculateGST({
+            taxableAmount,
+            gstApplicable: Boolean((req.body as any).gstApplicable),
+            gstType: (req.body as any).gstType ?? null,
+            gstRate: (req.body as any).gstRate ?? null,
+          });
+          return { cgst, sgst, igst };
+        })(),
         materialBreakdown,
         paletteBreakdown,
         invoiceDate: invoiceDate ? new Date(invoiceDate) : new Date(),

@@ -1,0 +1,423 @@
+<html lang='en'>
+  <head>
+    <meta charset='UTF-8' />
+    <meta name='viewport' content='width=device-width, initial-scale=1.0' />
+    <title>Receipt {{entryNumber}}</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: 'Arial', sans-serif;
+        font-size: 11px;
+        line-height: 1.4;
+        color: #333;
+        background: white;
+        width: 210mm; /* A4 width */
+        min-height: 297mm; /* A4 height */
+      }
+
+      .receipt-container {
+        max-width: 190mm;
+        margin: 0 auto;
+        padding: 15mm;
+      }
+
+      .header {
+        text-align: center;
+        margin-bottom: 20px;
+        border: 2px solid #2c3e50;
+        padding: 15px;
+      }
+
+      .receipt-title {
+        font-size: 28px;
+        font-weight: bold;
+        color: #2c3e50;
+        margin-bottom: 12px;
+      }
+
+      .entry-type-badge {
+        position: absolute;
+        top: 15px;
+        right: 15px;
+        background: #3498db;
+        color: white;
+        padding: 6px 12px;
+        border-radius: 4px;
+        font-size: 9px;
+        font-weight: bold;
+      }
+
+      .section {
+        margin-bottom: 15px;
+        border: 1px solid #bdc3c7;
+        padding: 12px;
+      }
+
+      .section-row {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 15px;
+      }
+
+      .section-half {
+        flex: 1;
+        border: 1px solid #bdc3c7;
+        padding: 12px;
+      }
+
+      .section-title {
+        font-weight: bold;
+        font-size: 14px;
+        margin-bottom: 10px;
+        color: #2c3e50;
+        text-decoration: underline;
+      }
+
+      .detail-row {
+        margin-bottom: 6px;
+        font-size: 11px;
+        display: flex;
+        justify-content: space-between;
+      }
+
+      .detail-label {
+        font-weight: bold;
+        color: #34495e;
+      }
+
+      .detail-value {
+        color: #2c3e50;
+      }
+
+      .weights-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr 1fr;
+        gap: 8px;
+      }
+
+      .weight-item {
+        border: 1px solid #ecf0f1;
+        padding: 8px;
+        text-align: center;
+      }
+
+      .weight-label {
+        font-size: 9px;
+        font-weight: bold;
+        color: #7f8c8d;
+        margin-bottom: 4px;
+      }
+
+      .weight-value {
+        font-size: 12px;
+        font-weight: bold;
+        color: #2c3e50;
+      }
+
+      .quality-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr 1fr 1fr;
+        gap: 6px;
+      }
+
+      .quality-item {
+        border: 1px solid #ecf0f1;
+        padding: 6px;
+        text-align: center;
+      }
+
+      .quality-label {
+        font-size: 8px;
+        font-weight: bold;
+        color: #7f8c8d;
+        margin-bottom: 3px;
+      }
+
+      .quality-value {
+        font-size: 10px;
+        font-weight: bold;
+        color: #2c3e50;
+      }
+
+      .footer {
+        margin-top: 15px;
+        text-align: center;
+        font-size: 9px;
+        color: #7f8c8d;
+        border-top: 1px solid #bdc3c7;
+        padding-top: 8px;
+      }
+
+      .signature-section {
+        margin-top: 15px;
+        border: 1px solid #bdc3c7;
+        padding: 12px;
+      }
+
+      .signature-title {
+        font-weight: bold;
+        margin-bottom: 8px;
+        color: #2c3e50;
+        font-size: 12px;
+      }
+
+      .signature-content {
+        display: flex;
+        gap: 15px;
+        align-items: center;
+      }
+
+      .qr-code {
+        width: 40px;
+        height: 40px;
+      }
+
+      .signature-details {
+        flex: 1;
+      }
+
+      .signature-line {
+        margin-bottom: 3px;
+        font-size: 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class='receipt-container'>
+      <div class='header'>
+        <div class='entry-type-badge'>{{entryType}}</div>
+        <div class='receipt-title'>RECEIPT</div>
+        <div style='font-size: 12px; color: #34495e;'>Entry #: {{entryNumber}}</div>
+        <div style='font-size: 12px; color: #34495e;'>Date: {{formatDate entryDate}}</div>
+      </div>
+
+      <div class='section-row'>
+        <div class='section-half'>
+          <div class='section-title'>ENTRY DETAILS</div>
+          <div class='detail-row'>
+            <span class='detail-label'>Entry Number:</span>
+            <span class='detail-value'>{{entryNumber}}</span>
+          </div>
+          <div class='detail-row'>
+            <span class='detail-label'>Entry Type:</span>
+            <span class='detail-value'>{{entryType}}</span>
+          </div>
+          <div class='detail-row'>
+            <span class='detail-label'>Date:</span>
+            <span class='detail-value'>{{formatDate entryDate}}</span>
+          </div>
+        </div>
+
+        {{#if vendor}}
+          <div class='section-half'>
+            <div class='section-title'>VENDOR</div>
+            <div class='detail-row'>
+              <span class='detail-label'>Name:</span>
+              <span class='detail-value'>{{vendor.name}}</span>
+            </div>
+            <div class='detail-row'>
+              <span class='detail-label'>Code:</span>
+              <span class='detail-value'>{{vendor.code}}</span>
+            </div>
+          </div>
+        {{/if}}
+      </div>
+
+      <div class='section-row'>
+        {{#if plant}}
+          <div class='section-half'>
+            <div class='section-title'>PLANT</div>
+            <div class='detail-row'>
+              <span class='detail-label'>Name:</span>
+              <span class='detail-value'>{{plant.name}}</span>
+            </div>
+            <div class='detail-row'>
+              <span class='detail-label'>Code:</span>
+              <span class='detail-value'>{{plant.code}}</span>
+            </div>
+          </div>
+        {{/if}}
+
+        <div class='section-half'>
+          <div class='section-title'>VEHICLE</div>
+          {{#if vehicle}}
+            <div class='detail-row'>
+              <span class='detail-label'>Vehicle Number:</span>
+              <span class='detail-value'>{{vehicle.vehicleNumber}}</span>
+            </div>
+            <div class='detail-row'>
+              <span class='detail-label'>Vehicle Type:</span>
+              <span class='detail-value'>{{vehicle.vehicleType}}</span>
+            </div>
+          {{/if}}
+          <div class='detail-row'>
+            <span class='detail-label'>Driver Name:</span>
+            <span class='detail-value'>{{driverName}}</span>
+          </div>
+          <div class='detail-row'>
+            <span class='detail-label'>Driver Phone:</span>
+            <span class='detail-value'>{{driverPhone}}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class='section'>
+        <div class='section-title'>WEIGHTS</div>
+        <div class='weights-grid'>
+          <div class='weight-item'>
+            <div class='weight-label'>Entry Weight</div>
+            <div class='weight-value'>{{entryWeight}}</div>
+          </div>
+          <div class='weight-item'>
+            <div class='weight-label'>Exit Weight</div>
+            <div class='weight-value'>{{exitWeight}}</div>
+          </div>
+          <div class='weight-item'>
+            <div class='weight-label'>Expected Weight</div>
+            <div class='weight-value'>{{expectedWeight}}</div>
+          </div>
+          <div class='weight-item'>
+            <div class='weight-label'>Exact Weight</div>
+            <div class='weight-value'>{{exactWeight}}</div>
+          </div>
+        </div>
+      </div>
+
+      {{#if (eq entryType 'purchase')}}
+        <div class='section'>
+          <div class='section-title'>QUALITY (PURCHASE)</div>
+          <div class='quality-grid'>
+            <div class='quality-item'>
+              <div class='quality-label'>Moisture (%)</div>
+              <div class='quality-value'>{{moisture}}</div>
+            </div>
+            <div class='quality-item'>
+              <div class='quality-label'>Dust (%)</div>
+              <div class='quality-value'>{{dust}}</div>
+            </div>
+            <div class='quality-item'>
+              <div class='quality-label'>Moisture Weight</div>
+              <div class='quality-value'>{{moistureWeight}}</div>
+            </div>
+            <div class='quality-item'>
+              <div class='quality-label'>Dust Weight</div>
+              <div class='quality-value'>{{dustWeight}}</div>
+            </div>
+            <div class='quality-item'>
+              <div class='quality-label'>Final Weight</div>
+              <div class='quality-value'>{{finalWeight}}</div>
+            </div>
+          </div>
+        </div>
+      {{/if}}
+
+      {{#if materialType}}
+        <div class='section-row'>
+          <div class='section-half'>
+            <div class='section-title'>MATERIAL</div>
+            <div class='detail-row'>
+              <span class='detail-label'>Material Type:</span>
+              <span class='detail-value'>{{materialType.name}}</span>
+            </div>
+          </div>
+
+          {{#if palletteType}}
+            <div class='section-half'>
+              <div class='section-title'>PALETTE</div>
+              <div class='detail-row'>
+                <span class='detail-label'>Palette Type:</span>
+                <span class='detail-value'>{{palletteType}}</span>
+              </div>
+              {{#if noOfBags}}
+                <div class='detail-row'>
+                  <span class='detail-label'>Number of Bags:</span>
+                  <span class='detail-value'>{{noOfBags}}</span>
+                </div>
+              {{/if}}
+              {{#if weightPerBag}}
+                <div class='detail-row'>
+                  <span class='detail-label'>Weight per Bag:</span>
+                  <span class='detail-value'>{{weightPerBag}}</span>
+                </div>
+              {{/if}}
+              {{#if packedWeight}}
+                <div class='detail-row'>
+                  <span class='detail-label'>Packed Weight:</span>
+                  <span class='detail-value'>{{packedWeight}}</span>
+                </div>
+              {{/if}}
+            </div>
+          {{/if}}
+        </div>
+      {{else if palletteType}}
+        <div class='section'>
+          <div class='section-title'>PALETTE</div>
+          <div class='detail-row'>
+            <span class='detail-label'>Palette Type:</span>
+            <span class='detail-value'>{{palletteType}}</span>
+          </div>
+          {{#if noOfBags}}
+            <div class='detail-row'>
+              <span class='detail-label'>Number of Bags:</span>
+              <span class='detail-value'>{{noOfBags}}</span>
+            </div>
+          {{/if}}
+          {{#if weightPerBag}}
+            <div class='detail-row'>
+              <span class='detail-label'>Weight per Bag:</span>
+              <span class='detail-value'>{{weightPerBag}}</span>
+            </div>
+          {{/if}}
+          {{#if packedWeight}}
+            <div class='detail-row'>
+              <span class='detail-label'>Packed Weight:</span>
+              <span class='detail-value'>{{packedWeight}}</span>
+            </div>
+          {{/if}}
+        </div>
+      {{/if}}
+
+      {{#if rate}}
+        <div class='section'>
+          <div class='section-title'>FINANCIAL</div>
+          <div class='detail-row'>
+            <span class='detail-label'>Rate:</span>
+            <span class='detail-value'>₹{{rate}}</span>
+          </div>
+          {{#if totalAmount}}
+            <div class='detail-row'>
+              <span class='detail-label'>Total Amount:</span>
+              <span class='detail-value'>₹{{totalAmount}}</span>
+            </div>
+          {{/if}}
+        </div>
+      {{/if}}
+
+      <div class='signature-section'>
+        <div class='signature-title'>DIGITAL SIGNATURE & VERIFICATION</div>
+        <div class='signature-content'>
+          <div class='qr-code'>
+            <img src='{{qrCodeDataUrl}}' alt='QR Code' style='width: 100%; height: 100%;' />
+          </div>
+          <div class='signature-details'>
+            <div class='signature-line'>Digital Signature:</div>
+            <div class='signature-line'>{{signature}}</div>
+            <div class='signature-line'>Timestamp: {{timestamp}}</div>
+            <div class='signature-line'>Authorized by: {{createdBy.name}}</div>
+            <div class='signature-line'>Biofuel Management System</div>
+          </div>
+        </div>
+      </div>
+
+      <div class='footer'>
+        <div>Generated by Biofuel Management System</div>
+        <div>Generated on: {{formatDate generatedAt}}</div>
+      </div>
+    </div>
+  </body>
+</html>

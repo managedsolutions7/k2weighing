@@ -60,6 +60,20 @@ const invoiceSchema = new Schema<IInvoice>(
       required: true,
       min: 0,
     },
+    finalAmount: {
+      type: Number,
+      required: false,
+      min: 0,
+    },
+    // GST configuration (non-breaking, optional)
+    gstApplicable: { type: Boolean, default: false },
+    gstType: { type: String, enum: ['IGST', 'CGST_SGST'], required: false, default: null },
+    gstRate: { type: Number, required: false, default: null, min: 0 },
+    gstAmounts: {
+      cgst: { type: Number, required: false, default: 0 },
+      sgst: { type: Number, required: false, default: 0 },
+      igst: { type: Number, required: false, default: 0 },
+    },
     // Material-wise breakdown for purchase invoices
     materialBreakdown: [
       {

@@ -15,6 +15,9 @@ import { PaginationDefaults } from '../constants';
 import Vehicle from '@models/vehicle.model';
 import { VARIANCE_TOLERANCE } from '@constants/variance.constants';
 import { S3Service } from './s3.service';
+import { EntryHtmlPdfService } from './entry-html-pdf.service';
+import { PdfManagerService } from './pdf-manager.service';
+import { env } from '../config/env';
 
 export class EntryService {
   /**
@@ -273,6 +276,9 @@ export class EntryService {
 
     // Recalculate invoices that include this entry
     await EntryService.recalculateInvoicesForEntry(updated._id);
+
+    // Invalidate PDF when exit weight changes
+    await PdfManagerService.invalidateEntryPdf(id);
 
     logger.info(`Exit weight updated for entry: ${id}`);
     return updated as any;
@@ -695,6 +701,9 @@ export class EntryService {
 
       if (!updatedEntry) throw new CustomError('Entry not found', 404);
 
+      // Invalidate PDF when entry data changes
+      await PdfManagerService.invalidateEntryPdf(id);
+
       logger.info(`Entry updated: ${id}`);
       return updatedEntry;
     } catch (error) {
@@ -734,7 +743,8 @@ export class EntryService {
       .populate('vendor', 'name code')
       .populate('vehicle', 'vehicleNumber vehicleType')
       .populate('plant', 'name code')
-      .lean();
+      .populate('materialType', 'name')
+      .populate('createdBy', 'name username');
 
     if (!entry) {
       throw new CustomError('Entry not found', 404);
@@ -754,7 +764,37 @@ export class EntryService {
       throw new CustomError('Receipt not available due to variance failure', 403);
     }
 
-    // Build PDF in-memory
+    // Check if PDF already exists and is valid
+    if (entry.pdfPath) {
+      try {
+        // Verify PDF exists in S3
+        await S3Service.headObject(entry.pdfPath);
+        logger.info(`Using existing PDF for entry: ${entry.entryNumber}`);
+        return {
+          filename: `${entry.entryNumber}-receipt.pdf`,
+          s3Key: entry.pdfPath,
+        };
+      } catch (error) {
+        // PDF doesn't exist in S3, clear the path and generate new one
+        logger.warn(`PDF not found in S3 for entry ${entry.entryNumber}, generating new one`);
+        await Entry.findByIdAndUpdate(id, { pdfPath: null });
+      }
+    }
+
+    // Check if HTML PDF engine is enabled
+    const useHtmlEngine = env.ENTRY_PDF_ENGINE === 'html';
+
+    if (useHtmlEngine) {
+      logger.info('Using HTML PDF engine for entry receipt generation');
+      const result = await EntryHtmlPdfService.generateEntryReceiptPdf(entry as any);
+
+      // Update entry with new PDF path
+      await PdfManagerService.updateEntryPdf(id, result.pdfPath, entry.pdfPath);
+
+      return { filename: `${entry.entryNumber}-receipt.pdf`, s3Key: result.pdfPath };
+    }
+
+    // Fallback to PDFKit (existing implementation)
     const doc = new PDFDocument({ size: 'A5', margin: 30 });
     const chunks: Buffer[] = [];
     const filename = `${entry.entryNumber}-receipt.pdf`;
@@ -767,6 +807,10 @@ export class EntryService {
           const buffer = Buffer.concat(chunks);
           const key = S3Service.buildKey(['receipts', filename]);
           await S3Service.putObject(key, buffer, 'application/pdf');
+
+          // Update entry with new PDF path
+          await PdfManagerService.updateEntryPdf(id, key, entry.pdfPath);
+
           resolve({ filename, s3Key: key });
         } catch (e) {
           reject(e);
