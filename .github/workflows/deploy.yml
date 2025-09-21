@@ -42,11 +42,6 @@ jobs:
           python3 -m pip install --upgrade pip
           pip3 install awsebcli
 
-      - name: Install Puppeteer dependencies on EB instance
-        run: |
-          # Install dependencies on the target EB instance
-          eb ssh "$EB_ENV_NAME" --command "sudo yum install -y atk at-spi2-atk cups-libs libXcomposite libXcursor libXdamage libXext libXi libXrandr libXrender libXScrnSaver libXtst pango gtk3 alsa-lib nss libdrm libgbm"
-
       - name: Initialize EB (idempotent)
         run: |
           eb init "$EB_APP_NAME" \
